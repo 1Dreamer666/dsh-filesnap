@@ -71,6 +71,38 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 重启 profile，完成一轮 agent 任务，然后输入 `/rewind`。如果组合后的 profile 中没有
 插件，或浏览器控件没有出现，请看[排障指南](docs/troubleshooting.zh.md)。
 
+## 第一次回退，一步一步来
+
+截图来自 `web` profile 上 0.2.2 的真实会话。
+
+**1. 跑一轮会改文件的任务，然后悬停到回复上。** 每条完成的 assistant 回复旁边，复制和
+分支的旁边，就是回退控件。tooltip 写着它会回到哪一轮、这次快照覆盖了什么。
+
+![assistant 回复下方的回退控件和它的覆盖范围 tooltip](assets/shot-1-turn-control.png)
+
+**2. 或者直接输入 `/rewind`。** 输入框会提示参数：轮次编号或点 id，`--into` 指向你已经
+建好的 fork，或者 `status`。刻意没有"往回三步"这种写法——你指的是眼前看到的那个点。
+
+![输入框里的 /rewind 命令及其参数](assets/shot-2-rewind-command.png)
+
+**3. 选一轮。** 文件回到那一轮之前的样子，对话在那里 fork，结果里写着你现在所在的子会话。
+你离开的那个对话没有被改写。
+
+![两次回退的结果：写入和删除的文件数，以及各自继续的会话](assets/shot-3-rewound.png)
+
+**4. 会话列表能分清这一对。** 你回退离开的那个对话带一个箭头标记，fork 不带。
+
+![会话列表里两条带标记的被回退会话](assets/shot-5-marked-sessions.png)
+
+**5. 改主意了？在 fork 里 `/redo`。** 它反转这次回退，把你交还给原来的对话，标记随之消失。
+
+![/redo 的结果：回退已反转，回到原会话继续](assets/shot-6-redo.png)
+
+**6. 随时 `/rewind status`。** 本工作区记录占的磁盘、共享内容存储占的磁盘，以及这里哪些
+文件*没有*被保护、为什么。
+
+![转录里的 /rewind status 输出](assets/shot-4-status.png)
+
 ## 为什么选择 dsh-filesnap
 
 | | 意味着什么 |

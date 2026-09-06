@@ -77,6 +77,43 @@ Restart the profile, run one agent turn, then enter `/rewind`. If the plugin is
 not listed in the composed profile or the browser control is missing, follow the
 [troubleshooting guide](docs/troubleshooting.md).
 
+## Your first rewind, step by step
+
+Captured from a real session on 0.2.2 in the `web` profile.
+
+**1. Run a turn that changes a file, then hover the reply.** The rewind control
+sits beside copy and branch on every completed assistant turn. Its tooltip names
+the turn it returns to and what the snapshot covered.
+
+![The rewind control under an assistant reply, with its coverage tooltip](assets/shot-1-turn-control.png)
+
+**2. Or type `/rewind`.** The composer shows the arguments: a turn number or a
+point id, `--into` for a fork you already made, or `status`. There is no
+"go back three" on purpose — you name the point you are looking at.
+
+![The /rewind command and its arguments in the composer](assets/shot-2-rewind-command.png)
+
+**3. Pick a turn.** The files go back to how they stood before it, the
+conversation forks there, and the result names the child session you now stand
+in. The conversation you left is not rewritten.
+
+![Two rewinds reported: files written and deleted, and the session each continues in](assets/shot-3-rewound.png)
+
+**4. The session list tells the pair apart.** The conversation you rewound out
+of carries an arrow mark; the fork does not.
+
+![The session list with two rewound-out-of sessions marked](assets/shot-5-marked-sessions.png)
+
+**5. Changed your mind? `/redo` in the fork.** It reverses the rewind and hands
+you back to the original conversation, and the mark disappears.
+
+![The /redo result: rewind reversed, continuing in the original session](assets/shot-6-redo.png)
+
+**6. `/rewind status` at any time.** Disk used by this workspace's records versus
+the shared content store, and which files here are *not* protected, and why.
+
+![The /rewind status output in the transcript](assets/shot-4-status.png)
+
 ## Why dsh-filesnap
 
 | | What it means |
