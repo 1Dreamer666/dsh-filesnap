@@ -19,7 +19,7 @@
 安装包名为 `dsh-filesnap`。快照引擎是用 Rust 编写的
 [FileSnap](https://github.com/extracurricular-ai/filesnap)。
 
-![dsh-filesnap：对话与工作区一起回退](assets/social-preview.png)
+![dsh-filesnap：对话与工作区一起回退](assets/social-preview-whale-girl.jpg)
 
 ```console
 > /rewind 2

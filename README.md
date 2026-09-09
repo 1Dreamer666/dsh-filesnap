@@ -20,7 +20,7 @@ No Git repository is required, and your commits, branches, index and stash stay 
 Install as `dsh-filesnap`. The snapshot engine is
 [FileSnap](https://github.com/extracurricular-ai/filesnap), written in Rust.
 
-![dsh-filesnap: conversation and workspace rewind together](assets/social-preview.png)
+![dsh-filesnap: conversation and workspace rewind together](assets/social-preview-whale-girl.jpg)
 
 ```console
 > /rewind 2

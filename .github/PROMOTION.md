@@ -46,7 +46,7 @@ rust
 
 **Social preview**
 
-Upload [`assets/social-preview.png`](../assets/social-preview.png) in repository
+Upload [`assets/social-preview-whale-girl.jpg`](../assets/social-preview-whale-girl.jpg) in repository
 Settings → Social preview. The source asset is 1280×640 and below 1 MB. It stays
 in the repository but is intentionally excluded from the npm tarball.
 

@@ -46,7 +46,7 @@ rust
 **Social preview**
 
 在仓库 Settings → Social preview 上传
-[`assets/social-preview.png`](../assets/social-preview.png)。源图为 1280×640、低于 1 MB；
+[`assets/social-preview-whale-girl.jpg`](../assets/social-preview-whale-girl.jpg)。源图为 1280×640、低于 1 MB；
 它保留在 Git 仓库中，但刻意不进入 npm tarball。
 
 ## 信息顺序
