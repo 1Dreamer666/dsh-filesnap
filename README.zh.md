@@ -1,4 +1,4 @@
-# dsh-filesnap — 同步回退 DSH 对话与文件
+# DSH Rewind & Redo — by FileSnap
 
 [![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
 [![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
@@ -11,9 +11,13 @@
 [参与讨论](https://github.com/extracurricular-ai/dsh-filesnap/discussions) ·
 [报告问题](https://github.com/extracurricular-ai/dsh-filesnap/issues/new?template=bug_report.yml)
 
-为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-同步回退对话与工作区文件，不碰 Git。每次回退都发生在一个新的 fork 中，因此改变主意时
-还可以用 `/redo` 回去。由一个快得离谱的 **Rust 🦀** 引擎驱动。
+**dsh-filesnap** 是 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)
+的对话与文件回退插件：把对话和已跟踪文件一起恢复到指定轮次之前，原对话保留，
+在新分支继续。选错了回退点，还可以用 `/redo` 撤销这次回退。
+不需要 Git 仓库，也不修改 commit、branch、index 或 stash。
+
+安装包名为 `dsh-filesnap`。快照引擎是用 Rust 编写的
+[FileSnap](https://github.com/extracurricular-ai/filesnap)。
 
 ![dsh-filesnap：对话与工作区一起回退](assets/social-preview.png)
 

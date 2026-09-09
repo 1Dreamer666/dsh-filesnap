@@ -1,4 +1,4 @@
-# dsh-filesnap — rewind DSH conversations and files together
+# DSH Rewind & Redo — by FileSnap
 
 [![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
 [![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
@@ -11,10 +11,14 @@ English | [中文](README.zh.md)
 [Join the discussion](https://github.com/extracurricular-ai/dsh-filesnap/discussions) ·
 [Report a bug](https://github.com/extracurricular-ai/dsh-filesnap/issues/new?template=bug_report.yml)
 
-Rewind a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-conversation and its workspace together — without touching Git. Every rewind
-happens in a fork, so `/redo` can take you back if you change your mind.
-Powered by a blazing-fast **Rust 🦀** engine.
+**dsh-filesnap** is a rewind and redo plugin for
+[DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness).
+It restores a conversation and its tracked files together, keeps the original
+conversation in a separate branch, and lets `/redo` reverse the rewind.
+No Git repository is required, and your commits, branches, index and stash stay untouched.
+
+Install as `dsh-filesnap`. The snapshot engine is
+[FileSnap](https://github.com/extracurricular-ai/filesnap), written in Rust.
 
 ![dsh-filesnap: conversation and workspace rewind together](assets/social-preview.png)
 
