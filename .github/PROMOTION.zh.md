@@ -1,14 +1,28 @@
-# dsh-filesnap 宣传素材包
+# DSH Rewind & Redo — by FileSnap：宣传素材包
 
 [English](PROMOTION.md)
 
 本文供维护者统一仓库元数据、演示和发布文案。公开结论应与当前 README 和带日期的审计一致。
 
+## 产品名称
+
+- 对外展示名：**DSH Rewind & Redo — by FileSnap**。
+- npm 包名和仓库名：`dsh-filesnap`。
+- 安装命令：`dsh plugin --profile web add dsh-filesnap`。
+- 引擎：FileSnap（npm 包名 `filesnap`）。
+- 首次介绍时同时写展示名和包名，后文可简称 `dsh-filesnap`；链接、命令和包标识保持原样。
+- 小红书等短标题优先写用户问题，完整展示名放正文，不挤占标题字数。
+- 本次只更新展示名称，用户不需要迁移或重新安装。
+
 ## GitHub 仓库元数据
 
 **About 描述**
 
-> 同步回退 DeepSeek Harness 的对话与工作区，不碰 Git。每次回退都发生在一个 fork 里，改变主意时 /redo 能带你回去。由一个快得离谱的 Rust 🦀 引擎驱动。
+> DSH Rewind & Redo — by FileSnap. A DeepSeek Harness plugin that restores conversations and tracked files together, preserves the original conversation in a branch, and lets /redo reverse the rewind. No Git required.
+
+GitHub About 与 `package.json` 使用上面同一段英文。中文目录使用：
+
+> DSH Rewind & Redo — by FileSnap（dsh-filesnap）：同步回退 DeepSeek Harness 对话与已跟踪文件，保留原对话，在新分支继续；/redo 可撤销回退。无需 Git 仓库。
 
 **Website**
 
@@ -64,9 +78,8 @@ rust
 
 ## 短发布文案
 
-> Coding agent 三轮之前走错了方向。dsh-filesnap 会把 DeepSeek Harness 对话和工作区一起
-> 回退，不改变 commit、stash 或 worktree。每次回退都发生在 fork 中，所以后悔了还可以
-> `/redo`。原生 Rust 引擎，不需要 Git。
+> DSH Rewind & Redo — by FileSnap（dsh-filesnap）：把 DeepSeek Harness 对话和已跟踪文件
+> 一起恢复，保留原对话，在新分支继续。回退点选错了？`/redo` 撤销这次回退。无需 Git 仓库。
 
 附仓库链接；平台支持视频时优先附功能演示，而不是静态卡片。
 

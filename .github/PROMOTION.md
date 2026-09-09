@@ -1,15 +1,29 @@
-# dsh-filesnap promotion kit
+# DSH Rewind & Redo — by FileSnap: promotion kit
 
 [中文](PROMOTION.zh.md)
 
 This is a maintainer-facing source of truth for repository metadata, demos and
 launch copy. Keep public claims aligned with the current README and dated audit.
 
+## Product identity
+
+- Display name: **DSH Rewind & Redo — by FileSnap**.
+- npm package and repository name: `dsh-filesnap`.
+- Install command: `dsh plugin --profile web add dsh-filesnap`.
+- Engine: FileSnap (npm package `filesnap`).
+- Introduce the display name and package name together on first mention. Use
+  `dsh-filesnap` thereafter; keep package identifiers, links and commands literal.
+- Short platform titles may lead with the user's problem instead of the full
+  display name. Explain the product identity in the body.
+- This is a display-name update. It does not require users to migrate or reinstall.
+
 ## GitHub repository metadata
 
 **About description**
 
-> Rewind a DeepSeek Harness conversation and its workspace together — without touching Git. Every rewind happens in a fork, so /redo can take you back if you change your mind. Powered by a blazing-fast Rust 🦀 engine.
+> DSH Rewind & Redo — by FileSnap. A DeepSeek Harness plugin that restores conversations and tracked files together, preserves the original conversation in a branch, and lets /redo reverse the rewind. No Git required.
+
+Use this exact English description for GitHub About and `package.json`.
 
 **Website**
 
@@ -69,10 +83,10 @@ depend on narration.
 
 ## Short launch post
 
-> Your coding agent took a wrong turn three edits ago. dsh-filesnap rewinds the
-> DeepSeek Harness conversation and workspace together—without touching commits,
-> stash or worktree state. Every rewind happens in a fork, so `/redo` can undo it.
-> Native Rust engine; Git not required.
+> DSH Rewind & Redo — by FileSnap (`dsh-filesnap`): restore a DeepSeek Harness
+> conversation and its tracked files together. Keep the original conversation;
+> continue in a branch. Picked the wrong point? `/redo` reverses the rewind.
+> No Git required.
 
 Link to the repository, then attach the feature demo instead of a static card
 when the platform supports video.
