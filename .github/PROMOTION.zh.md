@@ -49,32 +49,27 @@ rust
 [`assets/social-preview-whale-girl.jpg`](../assets/social-preview-whale-girl.jpg)。源图为 1280×640、低于 1 MB；
 它保留在 Git 仓库中，但刻意不进入 npm tarball。
 
-## 信息顺序
+## 信息顺序与比较依据
 
-按下面的顺序表达：
+1. **空间：** 相同内容跨保留版本、路径或共享存储内的会话重现时，FileSnap 可复用正文；7 组存储实验中 4 组正文副本更少，3 组相同。
+2. **回退：** 对话与已跟踪文件联动；原对话保留，`/redo` 可撤销回退。
+3. **跨助手经验：** 设计源自 Codex 回退实践，独立引擎已接入 DSH 和 Pi。
+4. **实现：** TypeScript 接入宿主，Rust 实现存储引擎。去重优势来自内容寻址设计，语言本身不构成性能结论。
+5. **边界：** 覆盖已知路径、观察到的写入与有界近期扫描。卸载不删除对话记录或工作区文件；含插件记录的会话需要重装后重新打开。
 
-1. **结果：** 对话和文件一起回退。
-2. **安全：** 不碰用户 Git 状态；回退本身也能撤销。
-3. **证据：** 二进制/ignored/项目外编辑覆盖、status 可检查、原生引擎实测延迟。
-4. **实现：** Rust 和内容寻址用于解释证据，不作为第一句。
-5. **限制：** 卸载后 session 在重新安装前暂时无法读取。
+可以直接比较 SiriLee 的 `dsh-rewind-plugin 0.9.1`，标明本方 `dsh-filesnap 0.2.2` / `filesnap 0.4.0`、日期和[复现证据](../docs/dedup-comparison.zh.md)。正文副本不能替代总磁盘占用；不要把对方自述的去重功能归因为作者对 FileSnap 的负面评价。
 
-从具体用户场景开头，不要用竞品风险作为开场。
+## 跨助手应用：所有文章共用
 
-## 20 秒功能演示
+FileSnap 的快照设计源自我们已发布的 [codex-rewind](https://github.com/extracurricular-ai/codex-rewind)（`codexr`）实践，独立引擎已用于 DSH 的 `dsh-filesnap` 和 Pi 的 [pi-better-rewind-redo](https://github.com/extracurricular-ai/pi-better-rewind-redo)。截至 2026-09-10，DSH 插件发布版为 0.2.2，依赖 `filesnap ^0.4.0`；Pi 扩展发布版为 0.1.1，依赖 `filesnap 0.5.0`；Codex 增强发行版为 0.151.0-rewind.0，保留同源的内置快照模块。
 
-使用一次性 workspace，以 1280×720 或更高分辨率录制，不出现私人 session 内容。
+这套设计已积累 Codex、DSH 和 Pi 的轮次接入、文件恢复与 redo 实践，是我们说明工程成熟度的具体依据。Codex 保留内置实现，DSH 与 Pi 使用不同版本的独立引擎；各自的兼容性与验证范围见项目文档。
 
-| 时间 | 画面 | 要证明的事 |
-|---:|---|---|
-| 0–3 秒 | 展示三轮对话和一个小型 workspace | “Agent 走错方向了。” |
-| 3–7 秒 | 打开最后一轮修改过的文件 | 对话和磁盘都偏离了目标 point。 |
-| 7–11 秒 | 点击第 2 轮的 rewind 操作 | 一次操作明确选择目标轮次。 |
-| 11–15 秒 | 展示 child 对话与恢复后的文件 | 对话和文件一起移动。 |
-| 15–20 秒 | 执行 `/redo` 并返回 | 回退本身也可逆。 |
+[公开版本、源码与验证范围](../docs/cross-assistant.zh.md)。用具体的接入经验说明成熟度；未经同条件验证，不写比竞品更稳定或所有助手同步共享修复。
 
-社交平台使用 MP4，README 使用短小、优化后的 GIF/WebP。终端文字要在手机上可读；即使静音，
-画面也应独立证明功能。
+## 当前演示素材
+
+使用已发布的完整横屏演示：中文 [B 站](https://www.bilibili.com/video/BV1BiYT6qEjs/) 2:24，英文 [YouTube](https://youtu.be/WPEXKesR_EM) 2:29。音画同步 1.5 倍速，保留删文件、恢复和 redo 的过程。20 秒剪辑不再作为主素材。
 
 ## 短发布文案
 
@@ -96,8 +91,7 @@ rust
 > 重复捕获 8 ms；在拥有 70,918 个文件的 harness checkout 中捕获 7,995 个相关文件为
 > 268 ms。测量方法和限制均公开在仓库中。
 >
-> 当前重要限制：卸载插件后，包含其事件的 session 在重新安装前无法读取；数据仍完整保留
-> 在磁盘上。
+> 卸载插件不会删除对话记录或工作区文件；包含插件记录的会话需要重装插件后才能在 DSH 中重新打开。
 
 ## Release note 模板
 

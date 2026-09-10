@@ -18,6 +18,8 @@
 
 安装包名为 `dsh-filesnap`。快照引擎是用 Rust 编写的
 [FileSnap](https://github.com/extracurricular-ai/filesnap)。
+`dsh-filesnap` 负责 DSH 轮次生命周期、消息旁回退按钮、对话分支和 `/redo`；
+引擎负责文件存储与恢复。本项目与 App Store 的 **File Converter — FileSnap** 无关。
 
 ![dsh-filesnap：对话与工作区一起回退](assets/social-preview-whale-girl.jpg)
 
@@ -29,6 +31,38 @@ Files: 7 written, 1 deleted.
 The conversation continues in session-9f3c1a04-….
 Run /redo there to reverse this rewind.
 ```
+
+## dsh-filesnap 与 dsh-rewind-plugin 对比
+
+与 **SiriLee 的 dsh-rewind-plugin 0.9.1** 相比，**dsh-filesnap 0.2.2**
+搭配 **filesnap 0.4.0** 的明确优势是：**文件内容去重复用范围更广**，并且可以用
+**`/redo` 撤销回退**。核查日期：2026-09-10。
+
+标记：✅ 满足需求 · ⚠️ 有边界或额外成本 · ❌ 当前未提供 · ☠️ 历史变更无内置撤销；[完整对比与风险标记](docs/comparison.zh.md)。
+
+| 你需要什么 | dsh-filesnap | dsh-rewind-plugin |
+|---|---|---|
+| **撤销选错的回退** | ✅ **`/redo`** | ❌ `/undo` 仅发起回退 |
+| **同一文件 A → B → A** | ✅ **2 份正文** | ⚠️ 3 份正文 |
+| **两个路径内容相同** | ✅ **共用 1 份** | ⚠️ 保存 2 份 |
+| 对话与文件一起恢复 | ✅ 支持 | ✅ 支持 |
+| **回退后仍能打开完整原对话** | ✅ **原会话保留** | ☠️ 后续历史被隐藏，无内置反向恢复¹ |
+
+¹ SiriLee 的原始日志仍保留，文档说明可手工恢复；风险是失去正常流程中的完整回退前视图，
+不是磁盘历史被删除。双方都有 Web UI 控件，也能联动恢复对话和文件。
+
+⚠️ FileSnap 进入共用工作区的子会话；仅回退对话和清理界面尚在
+[roadmap](docs/roadmap.zh.md) 中，SiriLee 已提供这两项功能。
+
+副本数来自**存储组件实验**，不是总磁盘体积或速度对比；双方都有元数据开销，
+复用要求内容仍在存储中。参见 [7 组实验、版本和源码证据](docs/dedup-comparison.zh.md)
+及 [使用方式比较](docs/comparison.zh.md)。
+
+## 跨助手的工程实践
+
+FileSnap 的快照设计源自我们已发布的 [codex-rewind](https://github.com/extracurricular-ai/codex-rewind)（`codexr`）实践，独立引擎已用于 DSH 的 `dsh-filesnap` 和 Pi 的 [pi-better-rewind-redo](https://github.com/extracurricular-ai/pi-better-rewind-redo)。截至 2026-09-10，DSH 插件发布版为 0.2.2，依赖 `filesnap ^0.4.0`；Pi 扩展发布版为 0.1.1，依赖 `filesnap 0.5.0`；Codex 增强发行版为 0.151.0-rewind.0，保留同源的内置快照模块。
+
+[接入证据与版本边界](docs/cross-assistant.zh.md)。
 
 ## 快速开始
 
@@ -43,8 +77,8 @@ Run /redo there to reverse this rewind.
 
 > [!IMPORTANT]
 > dsh 目前没有为仓库外插件提供正式的事件类型注册接口，因此 dsh-filesnap 会在加载时
-> 注册自己的 session 事件。**如果卸载插件，它捕获过的会话将暂时无法打开，重新安装后
-> 即可恢复访问。** 会话数据仍完整保留在磁盘上。插件装着但用源码 checkout 的 `pnpm dsh`
+> 注册自己的 session 事件。**卸载不会删除对话记录或工作区文件。** 已包含插件记录的会话，
+> 需要重装插件后才能在 DSH 中重新打开。插件装着但用源码 checkout 的 `pnpm dsh`
 > 启动时也会出现同样的拒绝——请用构建版 CLI 或 npm 安装的 dsh；见
 > [排障](docs/troubleshooting.zh.md#session-拒绝打开unknown-to-this-harness)和
 > [架构限制](docs/architecture.zh.md#上游事件注册缺口)。
@@ -211,6 +245,7 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 | 文档 | 回答什么问题 |
 |---|---|
 | [架构说明](docs/architecture.zh.md) | 何时捕获、fork 与还原的顺序，以及记录了什么。 |
+| [路线图](docs/roadmap.zh.md) | 清理、恢复预览及操作改进计划，不代表已发布功能。 |
 | [插件对比](docs/comparison.zh.md) | 不同 dsh rewind 设计的区别，并标明审计版本。 |
 | [基准测试](docs/benchmarks.zh.md) | 已发布的时间数据意味着什么，以及如何复现。 |
 | [排障指南](docs/troubleshooting.zh.md) | 安装、profile、client bundle 和存储诊断。 |

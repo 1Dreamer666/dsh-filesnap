@@ -50,36 +50,27 @@ Upload [`assets/social-preview-whale-girl.jpg`](../assets/social-preview-whale-g
 Settings → Social preview. The source asset is 1280×640 and below 1 MB. It stays
 in the repository but is intentionally excluded from the npm tarball.
 
-## Message hierarchy
+## Message hierarchy and comparisons
 
-Use these ideas in order:
+1. **Storage:** identical content can be reused across retained versions, paths and sessions sharing a store. Four of seven storage exercises saved payload copies; three tied.
+2. **Workflow:** rewind the conversation and tracked files together, retain the original conversation, and reverse the rewind with `/redo`.
+3. **Integration experience:** the design originated in Codex rewind work; the standalone engine powers DSH and Pi.
+4. **Implementation:** TypeScript integrates the host; Rust implements storage. Content addressing explains the deduplication result, not language choice alone.
+5. **Limits:** known paths, observed writes and bounded recent scanning. Uninstalling does not delete conversation logs or workspace files; sessions with plugin records require reinstalling before reopening.
 
-1. **Outcome:** rewind the conversation and its files together.
-2. **Safety:** the user's Git state is untouched; every rewind is undoable.
-3. **Proof:** binary/ignored/outside-project coverage, status inspection and
-   measured native-engine latency.
-4. **Implementation:** Rust and content addressing explain the proof; they are
-   not the headline.
-5. **Limitation:** uninstalling temporarily strands sessions until reinstall.
+Directly compare SiriLee’s `dsh-rewind-plugin 0.9.1` with `dsh-filesnap 0.2.2` / `filesnap 0.4.0`, citing dates and [reproduction evidence](../docs/dedup-comparison.md). Payload copies are not total disk usage. Do not attribute Google’s unsupported FileSnap comparison to the competitor’s author.
 
-Lead with a concrete user moment. Do not lead with competitor failures.
+## Cross-assistant context for every article
 
-## 20-second feature demo
+FileSnap’s snapshot design originated in our published [codex-rewind](https://github.com/extracurricular-ai/codex-rewind) distribution (`codexr`). The independent engine now powers the DSH integration `dsh-filesnap` and the Pi extension [pi-better-rewind-redo](https://github.com/extracurricular-ai/pi-better-rewind-redo). As of September 10, 2026, the DSH release is 0.2.2 with `filesnap ^0.4.0`; Pi’s release is 0.1.1 with `filesnap 0.5.0`; codex-rewind is 0.151.0-rewind.0 and retains its own related inlined snapshot module.
 
-Record at 1280×720 or higher with a disposable workspace and no private session
-content.
+These releases provide concrete experience integrating conversation turns, file recovery and redo across coding assistants. Codex retains its inlined implementation, while DSH and Pi use different standalone engine versions; compatibility and validation scope are documented per project.
 
-| Time | Shot | On-screen point |
-|---:|---|---|
-| 0–3 s | Show a three-turn conversation and a small workspace | “The agent took a wrong turn.” |
-| 3–7 s | Open the files changed by the latest turn | Conversation and disk have diverged from the desired point. |
-| 7–11 s | Click the rewind action for turn 2 | One action targets an explicit turn. |
-| 11–15 s | Show the child conversation and restored files | Conversation + files move together. |
-| 15–20 s | Trigger `/redo` and return | The rewind itself is reversible. |
+[Public releases, source and validation scope](../docs/cross-assistant.md). Describe concrete integration experience; it does not establish a lower failure rate than competitors or automatic sharing of fixes across all hosts.
 
-Export an MP4 for social posts and a short, optimized GIF/WebP for the README.
-Keep terminal text large enough to read on mobile. The visual proof should not
-depend on narration.
+## Current demonstration
+
+Use the published full-frame walkthroughs: Chinese [Bilibili](https://www.bilibili.com/video/BV1BiYT6qEjs/) 2:24 and English [YouTube](https://youtu.be/WPEXKesR_EM) 2:29. Audio and video run at 1.5× and preserve deletion, recovery and redo. The 20-second cut is no longer the primary asset.
 
 ## Short launch post
 
@@ -106,9 +97,8 @@ when the platform supports video.
 > capturing 7,995 relevant files from a 70,918-file harness checkout. Method and
 > caveats are published in the repository.
 >
-> Important current limitation: uninstalling the plugin makes sessions that
-> contain its events unreadable until it is reinstalled; their data remains on
-> disk.
+> Uninstalling the plugin does not delete conversation logs or workspace files.
+> Sessions containing plugin records require reinstalling before reopening in DSH.
 
 ## Release-note template
 

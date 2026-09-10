@@ -19,6 +19,9 @@ No Git repository is required, and your commits, branches, index and stash stay 
 
 Install as `dsh-filesnap`. The snapshot engine is
 [FileSnap](https://github.com/extracurricular-ai/filesnap), written in Rust.
+`dsh-filesnap` supplies the DSH turn lifecycle, message-adjacent rewind control,
+conversation fork and `/redo`; the engine supplies file storage and restore.
+This project is unrelated to the App Store app **File Converter — FileSnap**.
 
 ![dsh-filesnap: conversation and workspace rewind together](assets/social-preview-whale-girl.jpg)
 
@@ -30,6 +33,41 @@ Files: 7 written, 1 deleted.
 The conversation continues in session-9f3c1a04-….
 Run /redo there to reverse this rewind.
 ```
+
+## dsh-filesnap vs dsh-rewind-plugin
+
+Compared with **SiriLee's dsh-rewind-plugin 0.9.1**, **dsh-filesnap 0.2.2**
+with **filesnap 0.4.0** offers **broader file-content deduplication** and a
+built-in way to **reverse a rewind with `/redo`**. Reviewed 2026-09-10.
+
+Legend: ✅ Meets this need · ⚠️ Limits or extra cost · ❌ Not currently provided · ☠️ No built-in reversal of the history change. [Full comparison and risk markers](docs/comparison.md).
+
+| What you need | dsh-filesnap | dsh-rewind-plugin |
+|---|---|---|
+| **Reverse a mistaken rewind** | ✅ **`/redo`** | ❌ `/undo` only starts rewind |
+| **A → B → A, one file** | ✅ **2 payload copies** | ⚠️ 3 payload copies |
+| **Same bytes at two paths** | ✅ **1 shared copy** | ⚠️ 2 copies |
+| Restore conversation and files | ✅ Supported | ✅ Supported |
+| **Keep the complete original conversation accessible** | ✅ **Original session retained** | ☠️ Later history hidden; no built-in reversal¹ |
+
+¹ SiriLee retains the raw log and documents manual recovery; the risk is losing
+the full pre-rewind conversation view without a built-in way back, not deleting
+logged history. Both plugins provide Web UI rewind and conversation/file restore.
+
+⚠️ FileSnap continues in a child conversation sharing the workspace.
+Conversation-only mode and cleanup UI are planned in the [roadmap](docs/roadmap.md);
+SiriLee already provides these features.
+
+The counts above come from **storage-component exercises**, not a total disk-size
+or speed benchmark. Both retain metadata; content must still exist to be reused.
+See the [seven-case experiment, exact versions and source evidence](docs/dedup-comparison.md)
+and [workflow comparison](docs/comparison.md).
+
+## Cross-assistant experience
+
+FileSnap’s snapshot design originated in our published [codex-rewind](https://github.com/extracurricular-ai/codex-rewind) distribution (`codexr`). The independent engine now powers the DSH integration `dsh-filesnap` and the Pi extension [pi-better-rewind-redo](https://github.com/extracurricular-ai/pi-better-rewind-redo). As of September 10, 2026, the DSH release is 0.2.2 with `filesnap ^0.4.0`; Pi’s release is 0.1.1 with `filesnap 0.5.0`; codex-rewind is 0.151.0-rewind.0 and retains its own related inlined snapshot module.
+
+[Integration evidence and version boundaries](docs/cross-assistant.md).
 
 ## Quick start
 
@@ -45,8 +83,8 @@ installed with this package. You do not need Rust, Git or a separate runtime.
 > [!IMPORTANT]
 > dsh does not yet provide a supported registration API for event types declared
 > by out-of-repository plugins. dsh-filesnap therefore registers its session
-> events at load time. **If you uninstall the plugin, sessions it captured will
-> not open until you reinstall it.** Their data remains intact on disk. The same
+> events at load time. **Uninstalling does not delete conversation logs or workspace
+> files.** Reinstall the plugin to reopen sessions containing its records in DSH. The same
 > refusal appears with the plugin installed if dsh is started with `pnpm dsh`
 > from a source checkout — use the built CLI or an npm-installed dsh; see
 > [troubleshooting](docs/troubleshooting.md#a-session-refuses-to-open-with-unknown-to-this-harness)
@@ -160,8 +198,10 @@ Before every model step, dsh-filesnap captures a bounded union of:
 - a bounded scan of recent workspace changes, which covers writes made by shell
   commands.
 
-Content is addressed by hash, so unchanged files are reused rather than copied
-once per turn. `.filesnapignore` is symmetric: an ignored path is never stored,
+Content is addressed by whole-file SHA-256, so identical bytes are reused across
+paths, retained versions and sessions, including workspaces sharing the same data
+directory. This is not block-level deduplication: a changed file can add a new
+whole-file blob. `.filesnapignore` is symmetric: an ignored path is never stored,
 restored or deleted by a restore. A restore deletes a path only when the target
 snapshot positively recorded that the path was absent.
 
@@ -237,6 +277,7 @@ and [Troubleshooting](docs/troubleshooting.md) for operational workarounds.
 | Document | What it answers |
 |---|---|
 | [Architecture](docs/architecture.md) | When captures happen, how forks and restores are ordered, and what is recorded. |
+| [Roadmap](docs/roadmap.md) | Planned cleanup, recovery preview and workflow improvements; not shipped features. |
 | [Comparison](docs/comparison.md) | How the available dsh rewind designs differ, with dated package versions. |
 | [Benchmarks](docs/benchmarks.md) | What the published timings mean and how to reproduce them. |
 | [Troubleshooting](docs/troubleshooting.md) | Installation, profile, client bundle and storage diagnostics. |

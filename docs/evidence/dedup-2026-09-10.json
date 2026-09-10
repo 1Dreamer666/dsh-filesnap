@@ -1,0 +1,504 @@
+{
+  "date": "2026-09-10",
+  "method": "Storage-component exercises; no DSH UI, no end-to-end restore benchmark, no timing comparison. FileSnap runs the released 0.4.0 CLI; SnapshotStore is extracted from released 0.9.1 with only its unused default-home resolver adapted. 64 KiB ASCII payloads; fresh independent stores per case; same FileSnap dataDir within each case; retained content, no forced GC. Total bytes exclude filesystem allocation and are path-dependent; headline comparison uses payload copies, not total archive size.",
+  "bundleSha256": "43784e8c0a464a6113cc3be4b1571e4e12da34300a93b0809ba45d305acb2268",
+  "binarySha256": "d933638cde3d8ac93c49fe9ed71859c1ba89c8cb011c648f82592b9362bbac23",
+  "platform": "linux",
+  "arch": "x64",
+  "node": "v24.18.0",
+  "root": "/tmp/dsh-dedup-exercise-rFWvtG",
+  "results": [
+    {
+      "case": "adjacent-repeat",
+      "inputAssignments": 3,
+      "uniquePayloads": 1,
+      "filesnap": {
+        "contentCopies": 1,
+        "payloadBytes": 65536,
+        "totalFileBytes": 66860
+      },
+      "rewind": {
+        "contentCopies": 1,
+        "referenceRecords": 2,
+        "payloadBytes": 65536,
+        "totalFileBytes": 65944
+      },
+      "payloadResolutionVerified": true,
+      "captureEvents": [
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t1",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/adjacent-repeat/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "560b58dd711ff1cfb36b2977cdf9f6ef542453e22f0ced4b392b031d3a699fe9",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t2",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/adjacent-repeat/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "560b58dd711ff1cfb36b2977cdf9f6ef542453e22f0ced4b392b031d3a699fe9",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t3",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/adjacent-repeat/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "560b58dd711ff1cfb36b2977cdf9f6ef542453e22f0ced4b392b031d3a699fe9",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ]
+      ]
+    },
+    {
+      "case": "non-adjacent-A-B-A",
+      "inputAssignments": 3,
+      "uniquePayloads": 2,
+      "filesnap": {
+        "contentCopies": 2,
+        "payloadBytes": 131072,
+        "totalFileBytes": 132679
+      },
+      "rewind": {
+        "contentCopies": 3,
+        "referenceRecords": 0,
+        "payloadBytes": 196608,
+        "totalFileBytes": 197007
+      },
+      "payloadResolutionVerified": true,
+      "captureEvents": [
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t1",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/non-adjacent-A-B-A/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "7c2bd9b8daf5ae460374770c67c8556c09fa6d8d950c6c90f065e7afa108cf7a",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t2",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/non-adjacent-A-B-A/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "0521bcdd6af13a4e552c8b2d447be05787f8dde6405a78d524985dc8c97cf713",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t3",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/non-adjacent-A-B-A/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "7c2bd9b8daf5ae460374770c67c8556c09fa6d8d950c6c90f065e7afa108cf7a",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ]
+      ]
+    },
+    {
+      "case": "same-content-two-paths",
+      "inputAssignments": 2,
+      "uniquePayloads": 1,
+      "filesnap": {
+        "contentCopies": 1,
+        "payloadBytes": 65536,
+        "totalFileBytes": 67047
+      },
+      "rewind": {
+        "contentCopies": 2,
+        "referenceRecords": 0,
+        "payloadBytes": 131072,
+        "totalFileBytes": 131346
+      },
+      "payloadResolutionVerified": true,
+      "captureEvents": [
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t1",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/same-content-two-paths/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "584a931be0cb2f0238aafb130c34285b331a73e705a02bd3c13bf069923e05c2",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t2",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/same-content-two-paths/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "281d2a28be4bb9c952a33be52a727d1d3bf05753f5e023c8279ac056324f021b",
+            "reused": 0,
+            "hashed": 2,
+            "dropped": 0
+          }
+        ]
+      ]
+    },
+    {
+      "case": "same-content-two-sessions",
+      "inputAssignments": 2,
+      "uniquePayloads": 1,
+      "filesnap": {
+        "contentCopies": 1,
+        "payloadBytes": 65536,
+        "totalFileBytes": 66513
+      },
+      "rewind": {
+        "contentCopies": 2,
+        "referenceRecords": 0,
+        "payloadBytes": 131072,
+        "totalFileBytes": 131352
+      },
+      "payloadResolutionVerified": true,
+      "captureEvents": [
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t1",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/same-content-two-sessions/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "8a7e49fe9837f573735c530d5097b7283f1dde7841adb7b1338d20d2e36a8634",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s2",
+            "turn": "t2",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/same-content-two-sessions/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "8a7e49fe9837f573735c530d5097b7283f1dde7841adb7b1338d20d2e36a8634",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ]
+      ]
+    },
+    {
+      "case": "same-content-two-workspaces",
+      "inputAssignments": 2,
+      "uniquePayloads": 1,
+      "filesnap": {
+        "contentCopies": 1,
+        "payloadBytes": 65536,
+        "totalFileBytes": 66804
+      },
+      "rewind": {
+        "contentCopies": 2,
+        "referenceRecords": 0,
+        "payloadBytes": 131072,
+        "totalFileBytes": 131356
+      },
+      "payloadResolutionVerified": true,
+      "captureEvents": [
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t1",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/same-content-two-workspaces/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "70dc629e5f1feb8268fa9d63b93856559ab2f6c7d261034af73307741b23042e",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s2",
+            "turn": "t2",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/same-content-two-workspaces/w2"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "4f898269019456fc2ed7e7e64d0382ca23e1acea8c352a9fb69261e7ee8b9bd4",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ]
+      ]
+    },
+    {
+      "case": "all-unique",
+      "inputAssignments": 3,
+      "uniquePayloads": 3,
+      "filesnap": {
+        "contentCopies": 3,
+        "payloadBytes": 196608,
+        "totalFileBytes": 198471
+      },
+      "rewind": {
+        "contentCopies": 3,
+        "referenceRecords": 0,
+        "payloadBytes": 196608,
+        "totalFileBytes": 196983
+      },
+      "payloadResolutionVerified": true,
+      "captureEvents": [
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t1",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/all-unique/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "4acb39b9fc7ac0cb54d10597ad180ead01ec1b05f32299daf5106d34bbddbc32",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t2",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/all-unique/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "2879d671e7941356bc19814b7890eeab0a0c9431ed8ab5a92ca73454ab6d438f",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t3",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/all-unique/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "f1356d53897eacb31b582490b772bdf72a8ba076fcee0dc64dcd9eb2acc47bb5",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ]
+      ]
+    },
+    {
+      "case": "repeat-after-store-reopen",
+      "inputAssignments": 2,
+      "uniquePayloads": 1,
+      "filesnap": {
+        "contentCopies": 1,
+        "payloadBytes": 65536,
+        "totalFileBytes": 66519
+      },
+      "rewind": {
+        "contentCopies": 1,
+        "referenceRecords": 1,
+        "payloadBytes": 65536,
+        "totalFileBytes": 65825
+      },
+      "payloadResolutionVerified": true,
+      "captureEvents": [
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t1",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/repeat-after-store-reopen/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "71c49d28a54295cd87da3e86bd9fd9b1036df5ab8896ad3a9fc06b5a093e706e",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ],
+        [
+          {
+            "v": 1,
+            "type": "capture.started",
+            "session": "s1",
+            "turn": "t2",
+            "roots": [
+              "/tmp/dsh-dedup-exercise-rFWvtG/repeat-after-store-reopen/w1"
+            ]
+          },
+          {
+            "v": 1,
+            "type": "capture.done",
+            "manifest": "71c49d28a54295cd87da3e86bd9fd9b1036df5ab8896ad3a9fc06b5a093e706e",
+            "reused": 0,
+            "hashed": 1,
+            "dropped": 0
+          }
+        ]
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "package": "dsh-rewind-plugin",
+      "version": "0.9.1",
+      "gitHead": "c059e38ceb8e3da087387bcb808796461aa6064c",
+      "tarball": "https://registry.npmjs.org/dsh-rewind-plugin/-/dsh-rewind-plugin-0.9.1.tgz",
+      "integrity": "sha512-hqjU41sR4V0CXGjc4ig2zG3VQjzMUJvHzER+CWl7v4xOkcRqDtXrEjb4Up+xJhUfjbXDO2fXN/LBizwyBIqo9A==",
+      "sha256": "7916021046a75061bec92310a1f76daffe0a0629ab2e3daadb70b45b419ae8dc"
+    },
+    {
+      "package": "dsh-filesnap",
+      "version": "0.2.2",
+      "gitHead": "857481528bd17c2ea5434c8d358ad6ede7f8b844",
+      "tarball": "https://registry.npmjs.org/dsh-filesnap/-/dsh-filesnap-0.2.2.tgz",
+      "integrity": "sha512-ezkbpDTC2C3FciJAdqewdRlAE+WyaKSAC8n4DOW6R8PUDGuvirBrw6lCT241vY7/MhAOjzVMrEvvPd5BmjL2tg==",
+      "sha256": "9fa5148eb5d9f5b59e6e86a5de075cd073a42b8c797d841621914bd97dcd4cf8"
+    },
+    {
+      "package": "filesnap",
+      "version": "0.4.0",
+      "gitHead": null,
+      "tarball": "https://registry.npmjs.org/filesnap/-/filesnap-0.4.0.tgz",
+      "integrity": "sha512-4n8Lw5ke7QyEJmjzUGQMJ8ntCgAJS4sOkqd+vKli4gWxAg985fK3gWdCiSmMKQpw07NniXUgrYmOwIFYGFq+ag==",
+      "sha256": "b0619a062090e974faa2f88abb167b9bca967917f707b1dc437a1f0719a2099e"
+    },
+    {
+      "package": "filesnap",
+      "version": "0.4.0-linux-x64",
+      "gitHead": null,
+      "tarball": "https://registry.npmjs.org/filesnap/-/filesnap-0.4.0-linux-x64.tgz",
+      "integrity": "sha512-+0AfINuO4rqIfjdFw6Qyeo78jwXzrasQf3r3xBYS8zsg6GlD1nb/PvnlM5H6cZOuQcKi3oO8jSOISwJH4AriOQ==",
+      "sha256": "c0ecbc8e675990bd6a4454d70ba4bdfd6aa681f2b47da9a246b3acf61c401a20"
+    }
+  ],
+  "filesnapSourceCommit": "320c42877cd260f7dcd836f75c971785434af29d",
+  "filesnapAnnotatedTagObject": "225ac92b6adb28f06f8c1a4524d0362529583d60"
+}
