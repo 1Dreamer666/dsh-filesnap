@@ -2,7 +2,7 @@
 
 [返回 README](../README.zh.md) · [English](architecture.md)
 
-dsh-filesnap 是 rewind 系统中与 host 相关的半边。
+dsh-filesnap 提供 DSH 浏览器控件、命令与对话/文件恢复。
 [filesnap](https://github.com/extracurricular-ai/filesnap) 引擎负责捕获和还原文件；
 本插件决定何时捕获、当对话可以 fork 时一个 point 表示什么，以及对话与文件应该按什么
 顺序移动。
@@ -164,3 +164,25 @@ point 所在的 seq）。
 ```
 
 操作前先运行 `/rewind status`，查看工作区记录、共享 blob 占用和未受保护路径。
+
+## 浏览器实现
+
+可选的 `./client` export 会增加：
+
+- 每条已完成 assistant 消息旁边的回退操作；
+- header 中的 redo 和存储状态操作。
+
+转录本身已经是轮次列表，所以插件不会再增加一个重复的 checkpoint 面板。在浏览器中，
+部署先创建正确组合的子会话，host 把文件还原进去，client 再打开该子会话。headless 场景
+则由 host 插件自行 fork。
+
+浏览器 bundle 会在发布流程中完成类型检查和构建，但目前还没有自动化浏览器内测试。
+
+## Headless 继续目标
+
+host 执行的 headless fork 继承模型 route 和 preset，但不继承部署的 per-agent 模型选择或工作区挂载。
+
+## 单独使用引擎
+
+快照引擎也可以脱离 dsh 使用：通过 Rust（`cargo add filesnap`）或其带版本的 JSON Lines
+CLI 集成。本仓库完整的 subprocess adapter 是 [`src/cli.ts`](../src/cli.ts)。

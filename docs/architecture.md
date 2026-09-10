@@ -2,7 +2,7 @@
 
 [README](../README.md) · [中文](architecture.zh.md)
 
-dsh-filesnap is the host-specific half of a rewind system. The
+dsh-filesnap provides DSH browser controls, commands and conversation/file recovery. The
 [filesnap](https://github.com/extracurricular-ai/filesnap) engine captures and
 restores files; this plugin decides when to capture, what a point means in a
 forkable conversation, and how the transcript and filesystem operations are
@@ -194,3 +194,28 @@ inside the profile:
 
 Run `/rewind status` first to inspect the workspace records, shared blob usage
 and unprotected paths.
+
+## Browser implementation
+
+The optional `./client` export adds:
+
+- a rewind action beside the existing actions on each completed assistant turn;
+- header actions for redo and store status.
+
+The transcript is already the list of turns, so the plugin does not add a
+second checkpoint panel. In the browser, the deployment creates the correctly
+composed child session, the host restores files into it, and the client opens
+that child. Headless use performs the fork in the host plugin.
+
+The browser bundle is typechecked and built during release. It does not yet have
+an automated in-browser test; that remains a tracked limitation.
+
+## Headless continuation
+
+A host-performed headless fork inherits the model route and preset, but not the deployment’s per-agent model selection or workspace attachment.
+
+## Using the engine separately
+
+The snapshot engine is also usable outside dsh through Rust
+(`cargo add filesnap`) or its versioned JSON Lines CLI. The complete subprocess
+adapter in this repository is [`src/cli.ts`](../src/cli.ts).

@@ -2,9 +2,12 @@
 
 Recover a captured file, keep the original conversation, and undo the rewind if you picked the wrong point. This tutorial uses the Web UI and **dsh-filesnap 0.2.2**.
 
+
+Use the rewind control beside a message, or the redo/status actions in the conversation header.
+
 ## Install the plugin
 
-Use Node.js **^22.19 or >=24** and a DSH Web UI profile. Linux, macOS and Windows on x64 or arm64 are supported by the package. The native Rust engine is included; you do not need a Rust toolchain or a Git repository.
+Use Node.js **^22.19 or >=24** and a DSH Web UI profile. Linux, macOS and Windows on x64 or arm64 are supported by the package. The required components are included; you do not need a separate toolchain or a Git repository.
 
 ```sh
 dsh plugin --profile web add dsh-filesnap
@@ -40,19 +43,19 @@ The number means **before that explicit turn**, not “go back two turns.” Wai
 
 ![Rewind reports restored files and the child conversation](../../assets/shot-3-rewound.png)
 
-The button opens the child conversation. A typed command returns the child session ID; open that session if the UI stays in the original. Check the restored file on disk.
+The button opens the recovered conversation. A typed command reports a destination to open if the UI stays in the original. Check the restored file on disk.
 
-**Your original conversation remains available. Both conversations share the same physical workspace.** A fork does not create a second copy of the project; switching conversations does not switch independent file versions.
+**Your original conversation remains available.** Recovery changes the current workspace; opening the original conversation does not automatically switch the files back.
 
 ## 3. Undo the rewind with redo
 
-Before making more edits, enter this in the child conversation:
+Before making more edits, enter this in the conversation opened by rewind:
 
 ```text
 /redo
 ```
 
-FileSnap uses the rescue state recorded before rewind to reverse that operation. Follow the returned original conversation to continue.
+This reverses the rewind. Follow the returned original conversation to continue.
 
 ![Redo reports the reversed rewind and original continuation session](../../assets/shot-6-redo.png)
 
@@ -83,3 +86,5 @@ The recorded demo shows the complete loop at 1.5× speed. The English version is
 [English walkthrough on YouTube](https://youtu.be/WPEXKesR_EM) · [中文演示 · Bilibili](https://www.bilibili.com/video/BV1BiYT6qEjs/)
 
 Continue with the [versioned plugin comparison](../../docs/comparison.md) or [planned improvements](../../docs/roadmap.md).
+
+Implementation details: [How it works](../../docs/architecture.md) · [UI and compatibility evidence](../../docs/faq.md).

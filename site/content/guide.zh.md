@@ -2,9 +2,12 @@
 
 恢复已捕获的文件，保留完整原对话；如果选错了点，再撤销这次回退。本教程使用 Web UI，基于 **dsh-filesnap 0.2.2**。
 
+
+使用消息旁的回退按钮，或会话头部的 redo/status 操作即可。
+
 ## 安装插件
 
-准备 Node.js **^22.19 或 >=24** 和 DSH Web UI profile。安装包支持 Linux、macOS、Windows 的 x64 或 arm64，内置 Rust 原生引擎，无需安装 Rust 工具链或创建 Git 仓库。
+准备 Node.js **^22.19 或 >=24** 和 DSH Web UI profile。安装包支持 Linux、macOS、Windows 的 x64 或 arm64，所需组件随包提供，无需单独安装工具链或创建 Git 仓库。
 
 ```sh
 dsh plugin --profile web add dsh-filesnap
@@ -40,19 +43,19 @@ dsh plugin --profile web add dsh-filesnap
 
 ![回退结果显示已恢复文件和子会话](../../assets/shot-3-rewound.png)
 
-浏览器按钮会打开子会话；手动命令返回子会话 ID，如果界面仍停在原会话，请打开对应子会话，并检查磁盘文件。
+浏览器按钮会打开恢复后的对话；手动命令会返回继续目标，如果界面没有跳转，请打开该目标，并检查磁盘文件。
 
-**原对话仍完整保留，两个会话共用同一个物理工作区。** 分支不会为项目创建第二份文件副本，切换会话也不会自动切换独立的文件版本。
+**原对话仍完整保留。** 恢复会修改当前工作区，打开原对话不会自动把文件切回去。
 
 ## 3. 用 redo 撤销这次回退
 
-在继续编辑之前，在子会话执行：
+在继续编辑之前，在回退后打开的对话中执行：
 
 ```text
 /redo
 ```
 
-FileSnap 使用回退前保存的救援状态反转这次操作；根据返回结果打开原会话继续。
+这会撤销刚才的回退；根据返回结果打开原对话继续。
 
 ![redo 返回撤销结果和原会话继续目标](../../assets/shot-6-redo.png)
 
@@ -83,3 +86,5 @@ FileSnap 使用回退前保存的救援状态反转这次操作；根据返回�
 [中文演示 · Bilibili](https://www.bilibili.com/video/BV1BiYT6qEjs/) · [English walkthrough · YouTube](https://youtu.be/WPEXKesR_EM)
 
 接下来可以阅读 [版本化插件对比](../../docs/comparison.zh.md) 或 [后续功能计划](../../docs/roadmap.zh.md)。
+
+实现细节：[工作原理](../../docs/architecture.zh.md) · [界面与兼容性证据](../../docs/faq.zh.md)。

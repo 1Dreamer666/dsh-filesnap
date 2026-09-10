@@ -31,7 +31,7 @@ Reference: [GitHub's custom Pages workflow documentation](https://docs.github.co
 
 ## Search and content
 
-- Sixteen static HTML pages: eight routes in English and Chinese. Navigation and content work without JavaScript. JavaScript adds local search, copy buttons, workflow tabs and user-loaded video players.
+- Eighteen static HTML pages: nine routes in English and Chinese. Navigation and content work without JavaScript. JavaScript adds local search, copy buttons, workflow tabs and user-loaded video players.
 - Each translated route has a unique title/description, canonical, reciprocal hreflang, social image and structured metadata. `sitemap.xml` lists the localized canonical routes. The root entry redirects to English and offers both language links.
 - A project-path `robots.txt` cannot control the domain root, so no misleading project robots file is generated. After deployment, inspect the domain's existing robots policy and submit the project sitemap through the relevant Search Console property.
 - Search uses a same-origin per-language JSON index, with no analytics or third-party search service. YouTube/Bilibili load only after the user presses the player's load button.
@@ -40,3 +40,6 @@ Reference: [GitHub's custom Pages workflow documentation](https://docs.github.co
 - Do not mark planned roadmap items as supported features. Keep the raw-log preservation qualification beside the visible-history warning and the data-retention statement beside uninstall limitations.
 
 Website release verification belongs in the promotion tracker. A successful build does not establish deployment, search indexing or third-party player availability.
+
+
+The UI & integration FAQ renders from docs/faq.md and docs/faq.zh.md. It documents UI registration, host-turn integration and configured compatibility checks with fixed-version source links. Do not turn a configured CI target into a claim that an untested host version passed.

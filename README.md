@@ -3,7 +3,6 @@
 [![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
 [![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
 [![licence](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
-[![powered by 🦀 Rust](https://img.shields.io/badge/powered%20by-%F0%9F%A6%80%20Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
 [![git not required](https://img.shields.io/badge/git-not%20required-2ea44f)](#why-dsh-filesnap)
 
 English | [中文](README.zh.md)
@@ -11,28 +10,17 @@ English | [中文](README.zh.md)
 [Join the discussion](https://github.com/extracurricular-ai/dsh-filesnap/discussions) ·
 [Report a bug](https://github.com/extracurricular-ai/dsh-filesnap/issues/new?template=bug_report.yml)
 
-**dsh-filesnap** is a rewind and redo plugin for
-[DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness).
-It restores a conversation and its tracked files together, keeps the original
-conversation in a separate branch, and lets `/redo` reverse the rewind.
-No Git repository is required, and your commits, branches, index and stash stay untouched.
-
-Install as `dsh-filesnap`. The snapshot engine is
-[FileSnap](https://github.com/extracurricular-ai/filesnap), written in Rust.
-`dsh-filesnap` supplies the DSH turn lifecycle, message-adjacent rewind control,
-conversation fork and `/redo`; the engine supplies file storage and restore.
-This project is unrelated to the App Store app **File Converter — FileSnap**.
+**dsh-filesnap** brings rewind and redo directly into the
+[DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) chat UI.
+Click beside an assistant turn to restore the conversation and tracked files together.
+The original conversation stays available. Picked the wrong point? `/redo` reverses the rewind.
+No Git repository is required.
 
 ![dsh-filesnap: conversation and workspace rewind together](assets/social-preview-whale-girl.jpg)
 
-```console
-> /rewind 2
-Rewound to turn 2 (make the rate limit per-tenant).
-Files: 7 written, 1 deleted.
+[Watch the complete walkthrough · 2:29](https://youtu.be/WPEXKesR_EM) ·
+[中文演示 · 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/)
 
-The conversation continues in session-9f3c1a04-….
-Run /redo there to reverse this rewind.
-```
 
 ## dsh-filesnap vs dsh-rewind-plugin
 
@@ -54,7 +42,6 @@ Legend: ✅ Meets this need · ⚠️ Limits or extra cost · ❌ Not currently 
 the full pre-rewind conversation view without a built-in way back, not deleting
 logged history. Both plugins provide Web UI rewind and conversation/file restore.
 
-⚠️ FileSnap continues in a child conversation sharing the workspace.
 Conversation-only mode and cleanup UI are planned in the [roadmap](docs/roadmap.md);
 SiriLee already provides these features.
 
@@ -63,11 +50,10 @@ or speed benchmark. Both retain metadata; content must still exist to be reused.
 See the [seven-case experiment, exact versions and source evidence](docs/dedup-comparison.md)
 and [workflow comparison](docs/comparison.md).
 
-## Cross-assistant experience
+## Across coding assistants
 
-FileSnap’s snapshot design originated in our published [codex-rewind](https://github.com/extracurricular-ai/codex-rewind) distribution (`codexr`). The independent engine now powers the DSH integration `dsh-filesnap` and the Pi extension [pi-better-rewind-redo](https://github.com/extracurricular-ai/pi-better-rewind-redo). As of September 10, 2026, the DSH release is 0.2.2 with `filesnap ^0.4.0`; Pi’s release is 0.1.1 with `filesnap 0.5.0`; codex-rewind is 0.151.0-rewind.0 and retains its own related inlined snapshot module.
-
-[Integration evidence and version boundaries](docs/cross-assistant.md).
+The project builds on rewind and recovery experience across Codex, DSH and Pi.
+[Explore the projects and their relationship](docs/cross-assistant.md).
 
 ## Quick start
 
@@ -77,18 +63,13 @@ FileSnap’s snapshot design originated in our published [codex-rewind](https://
 - Node.js `^22.19` or `>=24`
 - Linux, macOS or Windows on x64 or arm64
 
-The native [filesnap](https://github.com/extracurricular-ai/filesnap) binary is
-installed with this package. You do not need Rust, Git or a separate runtime.
+The package includes the required components; no separate toolchain installation is needed.
 
 > [!IMPORTANT]
-> dsh does not yet provide a supported registration API for event types declared
-> by out-of-repository plugins. dsh-filesnap therefore registers its session
-> events at load time. **Uninstalling does not delete conversation logs or workspace
-> files.** Reinstall the plugin to reopen sessions containing its records in DSH. The same
-> refusal appears with the plugin installed if dsh is started with `pnpm dsh`
-> from a source checkout — use the built CLI or an npm-installed dsh; see
-> [troubleshooting](docs/troubleshooting.md#a-session-refuses-to-open-with-unknown-to-this-harness)
-> and [the architectural limitation](docs/architecture.md#the-upstream-event-registration-gap).
+> **Uninstalling does not delete conversation logs or workspace files.**
+> Reinstall the plugin to reopen conversations containing its records.
+> Use a built or npm-installed DSH CLI; source-checkout startup issues are covered in
+> [troubleshooting](docs/troubleshooting.md).
 
 ### 1. Install
 
@@ -124,29 +105,27 @@ not listed in the composed profile or the browser control is missing, follow the
 Captured from a real session on 0.2.2 in the `web` profile.
 
 **1. Run a turn that changes a file, then hover the reply.** The rewind control
-sits beside copy and branch on every completed assistant turn. Its tooltip names
+appears on every completed assistant turn. Its tooltip names
 the turn it returns to and what the snapshot covered.
 
 ![The rewind control under an assistant reply, with its coverage tooltip](assets/shot-1-turn-control.png)
 
-**2. Or type `/rewind`.** The composer shows the arguments: a turn number or a
-point id, `--into` for a fork you already made, or `status`. There is no
-"go back three" on purpose — you name the point you are looking at.
+**2. Or type `/rewind`.** Select a displayed turn number or recovery point.
+The number identifies the state before that turn, not a number of turns to go back.
 
 ![The /rewind command and its arguments in the composer](assets/shot-2-rewind-command.png)
 
-**3. Pick a turn.** The files go back to how they stood before it, the
-conversation forks there, and the result names the child session you now stand
-in. The conversation you left is not rewritten.
+**3. Pick a turn.** The conversation and files return to the selected state.
+The button opens the conversation to continue in; the original stays available.
 
 ![Two rewinds reported: files written and deleted, and the session each continues in](assets/shot-3-rewound.png)
 
-**4. The session list tells the pair apart.** The conversation you rewound out
-of carries an arrow mark; the fork does not.
+**4. Find the original conversation.** An arrow marks the conversation you left,
+so it is easy to identify later.
 
 ![The session list with two rewound-out-of sessions marked](assets/shot-5-marked-sessions.png)
 
-**5. Changed your mind? `/redo` in the fork.** It reverses the rewind and hands
+**5. Changed your mind? Run `/redo` in the conversation opened by rewind.** It hands
 you back to the original conversation, and the mark disappears.
 
 ![The /redo result: rewind reversed, continuing in the original session](assets/shot-6-redo.png)
@@ -160,11 +139,11 @@ the shared content store, and which files here are *not* protected, and why.
 
 | | What it means |
 |---|---|
-| **Conversation + files** | A rewind forks the transcript at the selected turn and restores the workspace into that fork. |
+| **Conversation + files** | Restore both to the selected point from the chat UI. |
 | **Git-independent** | Works in repositories and ordinary directories. Commits, branches, stash and worktree state are never changed. |
 | **Undoable rewind** | A rescue point is captured before restore writes begin; `/redo` reverses the rewind. |
 | **Broad file coverage** | Handles binary files, ignored files and edits made through `ctx.fs` outside the project root. |
-| **Native engine** | Bounded scanning, content addressing and restore run in a small **🦀 Rust** binary outside the session's Node process. |
+| **UI controls** | Rewind beside messages; redo and status actions in the conversation header. |
 | **Inspectable** | `/rewind status` reports storage use and files that are not protected, with the reason for each exclusion. |
 
 The design does not treat version control as a snapshot store. For a
@@ -176,7 +155,7 @@ version-stamped, source-audited comparison with other dsh rewind plugins, see
 | Command | Result |
 |---|---|
 | `/rewind` | List the workspace state captured before each turn. |
-| `/rewind <turn>` | Fork the conversation at that turn and restore its files. |
+| `/rewind <turn>` | Restore the conversation and tracked files to before the selected turn. |
 | `/redo` | Reverse the rewind that landed in the current session. |
 | `/rewind status` | Report stored data and files that are currently unprotected. |
 
@@ -190,24 +169,13 @@ rewound.
 
 ## What gets protected
 
-Before every model step, dsh-filesnap captures a bounded union of:
+Recovery requires a prior capture. FileSnap covers tracked files and observed edits,
+plus a limited scan of recent workspace changes. Ignore rules, size limits and
+capture timing still apply; it is not a backup of every file on your machine.
 
-- files already known to the workspace, including Git-tracked names;
-- paths observed immediately before a `ctx.fs` write or edit, even outside the
-  project root;
-- a bounded scan of recent workspace changes, which covers writes made by shell
-  commands.
-
-Content is addressed by whole-file SHA-256, so identical bytes are reused across
-paths, retained versions and sessions, including workspaces sharing the same data
-directory. This is not block-level deduplication: a changed file can add a new
-whole-file blob. `.filesnapignore` is symmetric: an ignored path is never stored,
-restored or deleted by a restore. A restore deletes a path only when the target
-snapshot positively recorded that the path was absent.
-
-`/rewind status` re-scans the current tree and names anything outside coverage,
-such as an unreadable path, an oversized file or a non-regular file. Coverage
-details and restore invariants live in [Architecture](docs/architecture.md).
+Run `/rewind status` to inspect coverage. Restoring changes the current workspace;
+opening an older conversation does not switch to an independent copy of its files.
+[Coverage and recovery details](docs/architecture.md).
 
 ## Performance
 
@@ -223,21 +191,6 @@ These numbers describe their original machine, not a universal promise. The
 tracked set is bounded instead of walking all 70,918 files every turn, and the
 repeat capture reuses unchanged content. See [Benchmarks](docs/benchmarks.md)
 for the method, missing metadata and a reproducible command sequence.
-
-## Browser experience
-
-The optional `./client` export adds:
-
-- a rewind action beside the existing actions on each completed assistant turn;
-- header actions for redo and store status.
-
-The transcript is already the list of turns, so the plugin does not add a
-second checkpoint panel. In the browser, the deployment creates the correctly
-composed child session, the host restores files into it, and the client opens
-that child. Headless use performs the fork in the host plugin.
-
-The browser bundle is typechecked and built during release. It does not yet have
-an automated in-browser test; that remains a tracked limitation.
 
 ## Configuration
 
@@ -257,35 +210,28 @@ removing a later rewind point.
 
 ## Current limits
 
-- Uninstalling the plugin makes sessions containing its event types unreadable
-  until it is reinstalled; no session data is deleted.
-- Typing `/rewind` into the web composer reports the child session id instead of
-  navigating to it. The per-turn browser action performs the navigation.
-- A host-performed headless fork inherits the model route and preset, but not the
-  deployment's per-agent model selection or workspace attachment.
-- Shell-created files outside the workspace, above the engine size bound or
-  outside the recent-change budget require an observed filesystem write to be
-  covered.
-- `gc`, `doctor` and session deletion exist in the engine but are not yet exposed
-  as `/rewind` subcommands.
+- Uninstalling does not delete conversation logs or workspace files; reinstall
+  the plugin to reopen conversations containing its records.
+- The browser button opens the recovered conversation. Typed `/rewind` commands
+  report a destination to open; they do not automatically navigate there.
+- Recovery is limited to captured content; inspect coverage before relying on it.
+- Conversation-only mode, cleanup UI and per-file recovery remain on the
+  [roadmap](docs/roadmap.md).
 
-See [Architecture](docs/architecture.md) for the event-registration constraint
-and [Troubleshooting](docs/troubleshooting.md) for operational workarounds.
+[Operational troubleshooting](docs/troubleshooting.md) ·
+[How it works](docs/architecture.md)
 
 ## Documentation
 
 | Document | What it answers |
 |---|---|
-| [Architecture](docs/architecture.md) | When captures happen, how forks and restores are ordered, and what is recorded. |
+| [How it works](docs/architecture.md) | Implementation details, conversation preservation and recovery ordering. |
+| [UI & integration FAQ](docs/faq.md) | Interface capabilities, integration evidence and compatibility scope. |
 | [Roadmap](docs/roadmap.md) | Planned cleanup, recovery preview and workflow improvements; not shipped features. |
 | [Comparison](docs/comparison.md) | How the available dsh rewind designs differ, with dated package versions. |
 | [Benchmarks](docs/benchmarks.md) | What the published timings mean and how to reproduce them. |
 | [Troubleshooting](docs/troubleshooting.md) | Installation, profile, client bundle and storage diagnostics. |
 | [Contributing](CONTRIBUTING.md) | Local development, builds and the four test tiers. |
-
-The snapshot engine is also usable outside dsh through Rust
-(`cargo add filesnap`) or its versioned JSON Lines CLI. The complete subprocess
-adapter in this repository is [`src/cli.ts`](src/cli.ts).
 
 ## Contributing
 

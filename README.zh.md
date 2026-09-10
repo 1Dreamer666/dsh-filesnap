@@ -3,7 +3,6 @@
 [![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
 [![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
 [![许可证](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
-[![powered by 🦀 Rust](https://img.shields.io/badge/powered%20by-%F0%9F%A6%80%20Rust-b7410e?logo=rust&logoColor=white)](https://github.com/extracurricular-ai/filesnap)
 [![无需 Git](https://img.shields.io/badge/git-not%20required-2ea44f)](#为什么选择-dsh-filesnap)
 
 [English](README.md) | 中文
@@ -11,26 +10,16 @@
 [参与讨论](https://github.com/extracurricular-ai/dsh-filesnap/discussions) ·
 [报告问题](https://github.com/extracurricular-ai/dsh-filesnap/issues/new?template=bug_report.yml)
 
-**dsh-filesnap** 是 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)
-的对话与文件回退插件：把对话和已跟踪文件一起恢复到指定轮次之前，原对话保留，
-在新分支继续。选错了回退点，还可以用 `/redo` 撤销这次回退。
-不需要 Git 仓库，也不修改 commit、branch、index 或 stash。
-
-安装包名为 `dsh-filesnap`。快照引擎是用 Rust 编写的
-[FileSnap](https://github.com/extracurricular-ai/filesnap)。
-`dsh-filesnap` 负责 DSH 轮次生命周期、消息旁回退按钮、对话分支和 `/redo`；
-引擎负责文件存储与恢复。本项目与 App Store 的 **File Converter — FileSnap** 无关。
+**dsh-filesnap** 让你直接在
+[DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 聊天界面点击回退。
+对话和已跟踪文件一起恢复，原对话完整保留。选错了回退点，再用 `/redo` 撤销。
+带消息旁回退按钮和会话级 redo/status 控件，无需 Git 仓库。
 
 ![dsh-filesnap：对话与工作区一起回退](assets/social-preview-whale-girl.jpg)
 
-```console
-> /rewind 2
-Rewound to turn 2 (把限流改成按租户维度).
-Files: 7 written, 1 deleted.
+[观看完整中文演示 · 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/) ·
+[English walkthrough · 2:29](https://youtu.be/WPEXKesR_EM)
 
-The conversation continues in session-9f3c1a04-….
-Run /redo there to reverse this rewind.
-```
 
 ## dsh-filesnap 与 dsh-rewind-plugin 对比
 
@@ -51,18 +40,16 @@ Run /redo there to reverse this rewind.
 ¹ SiriLee 的原始日志仍保留，文档说明可手工恢复；风险是失去正常流程中的完整回退前视图，
 不是磁盘历史被删除。双方都有 Web UI 控件，也能联动恢复对话和文件。
 
-⚠️ FileSnap 进入共用工作区的子会话；仅回退对话和清理界面尚在
-[roadmap](docs/roadmap.zh.md) 中，SiriLee 已提供这两项功能。
+仅回退对话和清理界面尚在 [roadmap](docs/roadmap.zh.md) 中，SiriLee 已提供这两项功能。
 
 副本数来自**存储组件实验**，不是总磁盘体积或速度对比；双方都有元数据开销，
 复用要求内容仍在存储中。参见 [7 组实验、版本和源码证据](docs/dedup-comparison.zh.md)
 及 [使用方式比较](docs/comparison.zh.md)。
 
-## 跨助手的工程实践
+## 跨助手的回退实践
 
-FileSnap 的快照设计源自我们已发布的 [codex-rewind](https://github.com/extracurricular-ai/codex-rewind)（`codexr`）实践，独立引擎已用于 DSH 的 `dsh-filesnap` 和 Pi 的 [pi-better-rewind-redo](https://github.com/extracurricular-ai/pi-better-rewind-redo)。截至 2026-09-10，DSH 插件发布版为 0.2.2，依赖 `filesnap ^0.4.0`；Pi 扩展发布版为 0.1.1，依赖 `filesnap 0.5.0`；Codex 增强发行版为 0.151.0-rewind.0，保留同源的内置快照模块。
-
-[接入证据与版本边界](docs/cross-assistant.zh.md)。
+项目积累了 Codex、DSH 和 Pi 中的回退与恢复经验。
+[查看相关项目及其关系](docs/cross-assistant.zh.md)。
 
 ## 快速开始
 
@@ -72,16 +59,12 @@ FileSnap 的快照设计源自我们已发布的 [codex-rewind](https://github.c
 - Node.js `^22.19` 或 `>=24`
 - x64 或 arm64 架构的 Linux、macOS 或 Windows
 
-原生 [filesnap](https://github.com/extracurricular-ai/filesnap) 二进制会随插件
-一起安装，不需要另装 Rust、Git 或其他运行时。
+所需组件随插件安装，无需另外安装工具链。
 
 > [!IMPORTANT]
-> dsh 目前没有为仓库外插件提供正式的事件类型注册接口，因此 dsh-filesnap 会在加载时
-> 注册自己的 session 事件。**卸载不会删除对话记录或工作区文件。** 已包含插件记录的会话，
-> 需要重装插件后才能在 DSH 中重新打开。插件装着但用源码 checkout 的 `pnpm dsh`
-> 启动时也会出现同样的拒绝——请用构建版 CLI 或 npm 安装的 dsh；见
-> [排障](docs/troubleshooting.zh.md#session-拒绝打开unknown-to-this-harness)和
-> [架构限制](docs/architecture.zh.md#上游事件注册缺口)。
+> **卸载不会删除对话记录或工作区文件。** 含插件记录的会话需重装插件后重新打开。
+> 请使用构建版或 npm 安装的 DSH CLI；源码启动问题见
+> [排障指南](docs/troubleshooting.zh.md)。
 
 ### 1. 安装
 
@@ -113,26 +96,26 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 
 截图来自 `web` profile 上 0.2.2 的真实会话。
 
-**1. 跑一轮会改文件的任务，然后悬停到回复上。** 每条完成的 assistant 回复旁边，复制和
-分支的旁边，就是回退控件。tooltip 写着它会回到哪一轮、这次快照覆盖了什么。
+**1. 跑一轮会改文件的任务，然后悬停到回复上。** 每条完成的 assistant 回复旁都有回退控件。
+提示会说明目标轮次和本次快照覆盖范围。
 
 ![assistant 回复下方的回退控件和它的覆盖范围 tooltip](assets/shot-1-turn-control.png)
 
-**2. 或者直接输入 `/rewind`。** 输入框会提示参数：轮次编号或点 id，`--into` 指向你已经
-建好的 fork，或者 `status`。刻意没有"往回三步"这种写法——你指的是眼前看到的那个点。
+**2. 或者输入 `/rewind`。** 选择列表中的轮次编号或恢复点。
+数字表示指定轮次之前的状态，不是“往回退几轮”。
 
 ![输入框里的 /rewind 命令及其参数](assets/shot-2-rewind-command.png)
 
-**3. 选一轮。** 文件回到那一轮之前的样子，对话在那里 fork，结果里写着你现在所在的子会话。
-你离开的那个对话没有被改写。
+**3. 选一轮。** 对话和文件一起恢复到选定状态。
+按钮会打开可以继续操作的对话，原对话仍完整保留。
 
 ![两次回退的结果：写入和删除的文件数，以及各自继续的会话](assets/shot-3-rewound.png)
 
-**4. 会话列表能分清这一对。** 你回退离开的那个对话带一个箭头标记，fork 不带。
+**4. 随时找到原对话。** 会话列表用箭头标记你离开的对话，方便之后辨认。
 
 ![会话列表里两条带标记的被回退会话](assets/shot-5-marked-sessions.png)
 
-**5. 改主意了？在 fork 里 `/redo`。** 它反转这次回退，把你交还给原来的对话，标记随之消失。
+**5. 改主意了？在回退后打开的对话里执行 `/redo`。** 它反转这次回退，把你交还给原来的对话，标记随之消失。
 
 ![/redo 的结果：回退已反转，回到原会话继续](assets/shot-6-redo.png)
 
@@ -145,11 +128,11 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 
 | | 意味着什么 |
 |---|---|
-| **对话 + 文件** | 在选中的轮次 fork 对话，并把工作区恢复进同一个 fork。 |
+| **对话 + 文件** | 直接在聊天界面把两者一起恢复到选定状态。 |
 | **不依赖 Git** | 在 Git 仓库和普通目录中都能工作，不改变 commit、branch、stash 或 worktree 状态。 |
 | **回退也能撤销** | 在还原写入前先创建救援点，`/redo` 可以撤销这次回退。 |
 | **覆盖面更完整** | 支持二进制文件、被 Git 忽略的文件，以及经 `ctx.fs` 发生在项目目录外的编辑。 |
-| **原生引擎** | 有界扫描、内容寻址和还原运行在独立的 **🦀 Rust** 小型二进制中，不占用会话的 Node 进程。 |
+| **界面操作** | 消息旁点回退，会话头部有 redo 和 status 控件。 |
 | **范围可检查** | `/rewind status` 会报告存储占用，以及哪些文件未被保护和对应原因。 |
 
 这套设计不会把版本控制当作快照仓库。带版本日期和源码审计的完整对比见
@@ -160,7 +143,7 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 | 命令 | 结果 |
 |---|---|
 | `/rewind` | 列出每轮开始前捕获的工作区状态。 |
-| `/rewind <turn>` | 在该轮 fork 对话，并恢复对应文件。 |
+| `/rewind <turn>` | 将对话和已跟踪文件恢复到指定轮次之前。 |
 | `/redo` | 撤销落在当前会话中的回退。 |
 | `/rewind status` | 报告存储内容和当前未受保护的文件。 |
 
@@ -171,18 +154,11 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 
 ## 哪些文件会被保护
 
-每次模型 step 之前，dsh-filesnap 会捕获三个有界集合的并集：
+恢复依赖事先捕获。FileSnap 覆盖已跟踪文件、观察到的编辑，以及有限范围内的近期工作区变化。
+忽略规则、大小限制和捕获时机仍会影响覆盖；它不是整台电脑所有文件的备份。
 
-- 工作区已知的文件，包括 Git 报告的 tracked 文件名；
-- 在 `ctx.fs` 写入或编辑之前观察到的路径，即使路径位于项目目录之外；
-- 最近发生变化的工作区文件的有界扫描，用来覆盖 shell 命令造成的写入。
-
-内容按哈希寻址，因此未变化的文件会被复用，不会每轮复制一份。`.filesnapignore` 是
-对称的：被忽略的路径不会被存储、恢复，也不会被还原操作删除。只有目标快照明确记录某个
-路径当时不存在，还原才有权删除它。
-
-`/rewind status` 会重新扫描当前目录，并列出超出覆盖范围的项目，例如无法读取、过大或
-不是普通文件的路径。覆盖细节与还原不变量见[架构说明](docs/architecture.zh.md)。
+用 `/rewind status` 检查覆盖范围。恢复会修改当前工作区，打开旧对话不会切换到独立的文件副本。
+[覆盖与恢复细节](docs/architecture.zh.md)。
 
 ## 性能
 
@@ -197,19 +173,6 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 这些数字只描述原始测量机器，不是对所有设备的承诺。跟踪集合是有界的，不会每轮遍历
 70,918 个文件；重复捕获还会复用未变化的内容。测量方法、尚缺的机器元数据和复现命令见
 [基准测试](docs/benchmarks.zh.md)。
-
-## 浏览器体验
-
-可选的 `./client` export 会增加：
-
-- 每条已完成 assistant 消息旁边的回退操作；
-- header 中的 redo 和存储状态操作。
-
-转录本身已经是轮次列表，所以插件不会再增加一个重复的 checkpoint 面板。在浏览器中，
-部署先创建正确组合的子会话，host 把文件还原进去，client 再打开该子会话。headless 场景
-则由 host 插件自行 fork。
-
-浏览器 bundle 会在发布流程中完成类型检查和构建，但目前还没有自动化浏览器内测试。
 
 ## 配置
 
@@ -228,31 +191,24 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 
 ## 当前限制
 
-- 卸载插件后，包含其事件类型的会话在重新安装前无法读取；不会删除任何会话数据。
-- 在 web 输入框中键入 `/rewind` 只会报告子会话 id，不会自动跳转；逐轮浏览器操作会完成跳转。
-- host 自行执行的 headless fork 会继承模型 route 和 preset，但不会继承部署的 per-agent
-  模型选择或 workspace 挂载。
-- shell 在工作区外、大小边界之外或近期变化预算之外创建的文件，需要同时被文件系统写入
-  事件观察到才能覆盖。
-- 引擎已经支持 `gc`、`doctor` 和删除 session，但插件还没有把它们暴露为 `/rewind`
-  子命令。
+- 卸载不会删除对话记录或工作区文件；含插件记录的会话需重装插件后重新打开。
+- 浏览器按钮会打开恢复后的对话；手动输入 `/rewind` 会返回继续目标，需要打开它，不会自动跳转。
+- 只能恢复已捕获内容，使用前检查文件覆盖范围。
+- 仅回退对话、清理界面与逐文件恢复仍在 [roadmap](docs/roadmap.zh.md) 中。
 
-事件注册限制见[架构说明](docs/architecture.zh.md)，操作问题见
-[排障指南](docs/troubleshooting.zh.md)。
+[操作排障](docs/troubleshooting.zh.md) · [工作原理](docs/architecture.zh.md)
 
 ## 文档
 
 | 文档 | 回答什么问题 |
 |---|---|
-| [架构说明](docs/architecture.zh.md) | 何时捕获、fork 与还原的顺序，以及记录了什么。 |
+| [工作原理](docs/architecture.zh.md) | 实现分工、原对话保留及恢复顺序。 |
+| [界面与集成 FAQ](docs/faq.zh.md) | 界面能力、接入证据和兼容范围。 |
 | [路线图](docs/roadmap.zh.md) | 清理、恢复预览及操作改进计划，不代表已发布功能。 |
 | [插件对比](docs/comparison.zh.md) | 不同 dsh rewind 设计的区别，并标明审计版本。 |
 | [基准测试](docs/benchmarks.zh.md) | 已发布的时间数据意味着什么，以及如何复现。 |
 | [排障指南](docs/troubleshooting.zh.md) | 安装、profile、client bundle 和存储诊断。 |
 | [参与贡献](CONTRIBUTING.zh.md) | 本地开发、构建和四层测试。 |
-
-快照引擎也可以脱离 dsh 使用：通过 Rust（`cargo add filesnap`）或其带版本的 JSON Lines
-CLI 集成。本仓库完整的 subprocess adapter 是 [`src/cli.ts`](src/cli.ts)。
 
 ## 参与贡献
 
