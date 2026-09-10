@@ -56,7 +56,8 @@ for (const file of files) {
 
   for (const match of source.matchAll(/dsh-filesnap.{0,40}?(\d+\.\d+\.\d+)/giu)) {
     const documented = match[1]
-    if (documented !== manifest.version) {
+    const historicalAudit = /^(?:docs\/(?:comparison|dedup-comparison|faq|benchmarks)(?:\.zh)?\.md)$/.test(relative)
+    if (documented !== manifest.version && !historicalAudit) {
       failures.push(`${relative}: dsh-filesnap ${documented} does not match package ${manifest.version}`)
     }
   }

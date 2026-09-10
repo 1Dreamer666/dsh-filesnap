@@ -23,22 +23,21 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveConfig } from './config.ts'
-import { declareEventTypes } from './types.ts'
+import { registerRpc } from './rpc.ts'
 import { registerProjection } from './projection.ts'
 import { FilesnapRewind } from './service.ts'
 import type {} from './types.ts'
 
 export { DEFAULTS, resolveConfig } from './config.ts'
 export type { FilesnapConfig } from './config.ts'
-export { declareEventTypes, FILESNAP_EVENT_TYPES } from './types.ts'
 export { currentTurn, FilesnapRewind } from './service.ts'
 export type { RewindDestination } from './service.ts'
 export { parseRewind } from './commands.ts'
 export { isMarked, mark, REWOUND_MARK, unmark } from './mark.ts'
 export type { RewindCommand } from './commands.ts'
-export { capturedPoints, foldPoints, initialPoints, reconcile, reducePoints, selectPoint } from './points.ts'
+export { capturedPoints, foldPoints, initialPoints, reducePoints, selectPoint } from './points.ts'
 export type { PointsState } from './points.ts'
-export type { FilesnapProjection, RewindRecord, RewindPreview, RewindReply } from './wire.ts'
+export type { FilesnapProjection, RewindPreview } from './wire.ts'
 export type {
   FilesnapStatus,
   RedoOutcome,
@@ -66,10 +65,6 @@ export const inject = ['subprocess', 'agents']
  * @param config - the deployment's `config` block, validated here.
  */
 export function apply(ctx: Context, config: unknown): void {
-  // Before anything can append or read one. Not an effect: see the function's
-  // own note on why removing these on unload would strand existing logs.
-  declareEventTypes()
-
   const resolved = resolveConfig(config)
 
   // The service registers its own loop listeners and commands, on its own
@@ -82,4 +77,5 @@ export function apply(ctx: Context, config: unknown): void {
   // so a headless assembly with no projection registry is unaffected. Safe as a
   // child fiber because `register` is an effect that rides it either way.
   registerProjection(ctx)
+  registerRpc(ctx)
 }

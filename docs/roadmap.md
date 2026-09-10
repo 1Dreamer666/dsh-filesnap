@@ -1,32 +1,25 @@
 # Roadmap
 
-[README](../README.md) · [中文](roadmap.zh.md) · [Current comparison](comparison.md)
+[README](../README.md) · [中文](roadmap.zh.md)
 
-Updated **2026-09-10**, against **dsh-filesnap 0.2.2**. These are planned improvements, not shipped features or release-date commitments. The priorities below guide implementation; completion requires working behavior and verification.
+## Implemented in 0.3.0
 
-## Implemented, not released yet
+- File list preview and confirmation with a fresh state check before restore.
+- Independent workspace snapshot panel: records/shared content usage, session counts and unprotected files.
+- Confirmed manual collection of unreferenced data, preserving snapshots and redo recovery.
+- Versioned migrations in Settings; the first task repairs legacy uninstall compatibility.
+- No custom session events; browser buttons use independent RPC.
+- Full prompt refill in an empty composer.
 
-The development build adds file-change preview and confirmation to the button and `/rewind`, using FileSnap 0.5.0+. Cancel leaves workspace files and branches unchanged; confirmation rechecks file state. Line-by-line diffs and excluded-path display remain planned. [Workflow](rewind-preview.md).
+## Planned
 
-## Planned work
-
-| Priority | Improvement | What completion means |
+| Priority | Improvement | Boundary |
 |---|---|---|
-| P1 | **Snapshot cleanup commands and settings UI** | Expose engine collection and session deletion through the plugin; preview the selected scope and removals before confirming. Protect content referenced by retained snapshots and redo states. |
-| P1 | **Retention policies and optional automatic cleanup** | Configure age/count/storage policies and protected sessions; show the affected recovery points and report failures. Keep automatic cleanup opt-in. |
-| P1 | **Storage usage and deduplication inspection** | Show actual stored payload bytes, metadata and shared-object references separately; explain the measurement scope. Include commands/UI for inspecting storage health through the engine's `doctor` capability. |
-| P1 | **Line-by-line diffs and excluded paths** | Extend the implemented file list with content diffs, excluded paths and reasons. |
-| P2 | **Conversation-only rewind** | Allow an explicit mode that leaves workspace files unchanged; specify its fork and redo behavior and distinguish it from synchronized conversation/file recovery. |
-| P2 | **Per-file recovery selection** | Select files from a captured point and preview the resulting changes; clearly show when the recovered files no longer correspond to the complete conversation state. |
-| P2 | **Smoother fork and redo navigation** | Make the original/child relationship and continuation target easier to see and open, including typed-command workflows. Retain the original conversation and explain the shared workspace. |
-| P1 investigation | **Session reopening without plugin-specific registration** | Investigate host-supported event registration or a compatible migration path. Verify uninstall/reinstall and supported host upgrades before claiming the current constraint is resolved. |
+| P1 | Retention policies and optional automatic cleanup | Age/count/space limits and protected sessions, with explicit previews of recovery points to be removed. |
+| P1 | Session snapshot deletion and health checks | Current cleanup collects only unreferenced objects; no session-delete or engine doctor UI yet. |
+| P1 | Line-level diffs | Current preview shows paths and actions. |
+| P2 | Conversation-only mode | Define branch/redo semantics when files stay unchanged. |
+| P2 | Per-file restore | Explain partial conversation/file consistency. |
+| P2 | More shortcuts and command navigation | Dialogs support Escape, Tab and Enter; no new global shortcuts. |
 
-The engine already exposes `gc`, `doctor` and session deletion. Plugin commands, settings, policy controls and previews still need implementation. A roadmap entry is not an existing installable command.
-
-## Current release boundaries
-
-The current plugin does not provide a standalone conversation-only mode, cleanup UI, per-file restore picker or diff view. Rewind creates a child conversation sharing the original workspace.
-
-**Uninstalling does not delete conversation logs or workspace files.** Sessions containing plugin records currently require reinstalling before reopening in DSH. The registration investigation above does not mean this limitation has been fixed.
-
-Track implemented changes in release notes with the relevant plugin, engine and host versions. Storage collection must preserve retained recovery data; interaction changes must verify conversation/file state and the applicable redo behavior.
+These are plans, not existing capabilities or release-date commitments. Future format migrations reuse the [shared entry](migrations.md), with source-specific adapters and tests.

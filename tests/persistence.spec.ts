@@ -1,31 +1,7 @@
-/**
- * The one failure the other suites cannot see: a log this plugin wrote being
- * opened by a reader that does not know its event types.
- *
- * Every other suite runs the plugin and the reader in one process, where the
- * plugin's load-time declaration lands on the very `KNOWN_SESSION_EVENT_TYPES`
- * the reader consults — so `wiring.spec.ts` asserting `has(type)` proves
- * nothing about a reader in another process, or in another module instance
- * of the same package. Both happen in production: a harness without the
- * plugin, and a source launch (`pnpm dsh`, which resolves the harness to
- * `src/` while the plugin's import resolves to `lib/`). Either refuses with
- * `contains event type "filesnap/point" … unknown to this harness and not
- * marked ignorable`, which is what a real session hit.
- *
- * So this suite writes one log through the real store and JSONL backend and
- * reads it back twice: in this process, where the declaration is present, and
- * in a child `node` process that mounts only the store and the backend and
- * never loads this plugin. The first must open; the second must refuse with
- * that exact message. The pair pins the mechanism — the declaration is what
- * makes the difference, and it reaches exactly one module instance.
- *
- * The harness reserved the envelope's `ignorable` marker for out-of-repo
- * informational events like these, and its reader honours it. The plugin
- * cannot set it: `Session.append` deep-freezes the envelope and copies only
- * the surface fields into it, on 0.1.2-rc.1 and on master alike. When an
- * `append` option for it lands upstream, the child-process assertion here is
- * the one that flips, and the declaration becomes legacy-only.
- */
+/** Persisted conversations must open in a fresh process without this plugin. */
+import { readFileSync, writeFileSync } from 'node:fs'
+import { zstdCompressSync } from 'node:zlib'
+import { decodeArtifact, migrateFile } from '../src/migrate-session-logs.ts'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -144,17 +120,16 @@ describe.skipIf(BINARY === undefined)('a log this plugin wrote, opened by a harn
     agent.session.append('turn/end', { turn, reason: { kind: 'completed' } })
   }
 
-  it('opens in the process that declared the types, and only there', async () => {
+  it('captures real snapshots yet opens without the plugin', async () => {
     const agent = agentFor('persist-declared')
     await oneTurn(agent, 1)
-    const live = agent.session.snapshotEvents().find(event => event.type === 'filesnap/point')
-    expect(live, 'the turn produced a rewind point').toBeDefined()
+    expect(await ctx.filesnap.points(agent)).toMatchObject({ ok: true, value: [{ point: 'persist-declared.t1' }] })
     await ctx.sessions.flush(agent.session)
 
     // Same process, declaration present: the reader that refuses unknown
     // types accepts this one because the plugin added it at load.
     const here = await ctx.sessionPersistence.load(SessionId('persist-declared'))
-    expect(here.events.map(event => event.type)).toContain('filesnap/point')
+    expect(here.events.some(event => event.type.startsWith('filesnap/'))).toBe(false)
 
     for (const fiber of fibers.splice(0).reverse()) await fiber.dispose()
 
@@ -162,8 +137,30 @@ describe.skipIf(BINARY === undefined)('a log this plugin wrote, opened by a harn
     // name, at the seq the point sits at. This is the message a user sees
     // after uninstalling, and under a source launch even with it installed.
     const elsewhere = readBackWithoutPlugin(root.path, 'persist-declared')
-    expect(elsewhere.ok).toBe(false)
-    expect(elsewhere.message).toMatch(/contains event type "filesnap\/point" \(seq \d+\) unknown to this harness and not marked ignorable/)
+    expect(elsewhere.ok, elsewhere.message).toBe(true)
+  })
+
+  it('repairs an old required event so a fresh reader can open the same log without the plugin', async () => {
+    const agent = agentFor('legacy-repair')
+    await oneTurn(agent, 1)
+    await ctx.sessions.flush(agent.session)
+    const path = ctx.sessionPersistence.locate(agent.session.header)!.path
+    for (const fiber of fibers.splice(0).reverse()) await fiber.dispose()
+    const compressed = path.endsWith('.zstd')
+    const original = readFileSync(path)
+    const raw = decodeArtifact(original, compressed)
+    const rows = raw.trimEnd().split('\n')
+    const last = JSON.parse(rows.at(-1)!) as { seq: number; time: number }
+    const old = raw + JSON.stringify({ type: 'filesnap/point', seq: last.seq + 1, time: last.time + 1, data: { point: 'legacy-repair.t1', turn: 1 } }) + '\n'
+    const split = old.indexOf('\n') + 1
+    writeFileSync(path, compressed ? Buffer.concat([zstdCompressSync(Buffer.from(old.slice(0, split))), zstdCompressSync(Buffer.from(old.slice(split)))]) : old)
+    expect(readBackWithoutPlugin(root.path, 'legacy-repair').ok).toBe(false)
+    const repaired = await migrateFile(path, true)
+    expect(repaired.events).toBe(1)
+    const loaded = readBackWithoutPlugin(root.path, 'legacy-repair')
+    expect(loaded.ok, loaded.message).toBe(true)
+    expect(loaded.types).toContain('user/message')
+    expect(loaded.types).toContain('assistant/message')
   })
 
   it('a log with no plugin events opens anywhere, so the refusal is about these events alone', async () => {

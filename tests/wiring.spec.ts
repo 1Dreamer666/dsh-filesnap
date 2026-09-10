@@ -23,9 +23,9 @@ import { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
-import { apply, FILESNAP_EVENT_TYPES } from '../src/index.ts'
+import { apply } from '../src/index.ts'
 import { BINARY, nodeSubprocess, scratch } from './support.ts'
 
 /** A session bound to a working directory, and the slice of `Agent` this plugin reads. */
@@ -171,8 +171,8 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     )
     expect(decision.kind).toBe('enter')
 
-    const point = agent.session.snapshotEvents().find(event => event.type === 'filesnap/point')
-    expect(point?.type === 'filesnap/point' && point.data.point).toBe('session-a.t1')
+    expect(await ctx.filesnap.points(agent)).toMatchObject({ ok: true, value: [{ point: 'session-a.t1' }] })
+
   })
 
   it('puts the workspace back through the point a dispatched turn recorded', async () => {
@@ -190,7 +190,7 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     expect(readFileSync(file, 'utf8')).toBe('original\n')
   })
 
-  it('requires confirmation through the registered command and projects both preview and execution results', async () => {
+  it('requires confirmation through the terminal command without custom events', async () => {
     const agent = agentAt('command-preview', workspace.path)
     const file = join(workspace.path, 'notes.txt')
     writeFileSync(file, 'original')
@@ -202,20 +202,19 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     const invoke = (rawInput: string) => run({
       agent, rawInput, commandId: 'test-command' as never, attachments: [], signal: new AbortController().signal,
     })
-    const result = await invoke('2 --request preview-request')
+    const result = await invoke('2')
     expect(result.kind).toBe('success')
     expect(result.text).toContain('WRITE / RESTORE')
     expect(readFileSync(file, 'utf8')).toBe('edited')
-    const event = agent.session.snapshotEvents().findLast(event => event.type === 'filesnap/reply')
-    const preview = event?.type === 'filesnap/reply' ? event.data.preview : undefined
-    expect(preview?.changes).toEqual([{ path: file, action: 'write' }])
-    expect((await invoke('2 --into child --request rejected')).kind).toBe('error')
+    const token = /--confirm ([\w-]+)/.exec(result.text ?? '')?.[1]
+    expect(token).toBeDefined()
+    expect((await invoke('2 --into child')).kind).toBe('error')
     expect(readFileSync(file, 'utf8')).toBe('edited')
-    const confirmed = await invoke(`2 --confirm ${preview!.token} --into child --request confirmed`)
+    const confirmed = await invoke(`2 --confirm ${token} --into child`)
     expect(confirmed.kind).toBe('success')
     expect(readFileSync(file, 'utf8')).toBe('original')
-    const last = agent.session.snapshotEvents().findLast(event => event.type === 'filesnap/reply')
-    expect(last?.type === 'filesnap/reply' && last.data).toEqual({ requestId: 'confirmed', child: 'child' })
+    expect(agent.session.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
+
   })
 
   it('records a pre-edit image even though the fs policy owns the decision slot', async () => {
@@ -257,17 +256,7 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     }
   })
 
-  it('declares its event types, so a captured session stays loadable', async () => {
-    // The persistence reader refuses a log holding a type it does not know
-    // unless the event is marked ignorable, and a plugin outside the harness
-    // repository can do neither through the public API. Undeclared, every
-    // session this plugin captured in failed to load with
-    // SessionFormatUnsupportedError — the conversation was still on disk and
-    // the harness would not read it.
-    for (const type of FILESNAP_EVENT_TYPES) {
-      expect(KNOWN_SESSION_EVENT_TYPES.has(type)).toBe(true)
-    }
-  })
+
 
   it('does not capture a step the deployment rejected', async () => {
     const agent = agentAt('session-a', workspace.path)
@@ -277,6 +266,6 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
       { messages: [], turn: 1, step: 1, signal: new AbortController().signal },
       (): Promise<PreStepDecision> => Promise.resolve({ kind: 'reject' }),
     )
-    expect(agent.session.snapshotEvents().some(event => event.type === 'filesnap/point')).toBe(false)
+    expect(agent.session.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
   })
 })

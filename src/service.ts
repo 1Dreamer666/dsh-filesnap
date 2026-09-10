@@ -6,7 +6,7 @@
  * opinion about one, and a command that promised the combined operation would
  * deliver half of it. *Rewind* is the user-facing word for what a plugin does,
  * and this is the layer that holds both halves — so the ordering, the failure
- * modes, and the durable record of what happened all live here.
+ * modes and the result returned to the caller all live here.
  *
  * The order is fixed and the reason is `undo_for`. A restore files its undo
  * record in the session named by `--undo-for`, and for a forking host that is
@@ -19,18 +19,19 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
-import type { RewindPreview } from './wire.ts'
+import type { RewindPreview, CleanupPreview, CleanupOutcome } from './wire.ts'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
-import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionId, SessionHeader } from '@deepseek-ai/dsh-session'
 import { SessionId as brandSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import { registerCommands } from './commands.ts'
 import type { FilesnapCli, FilesnapRun } from './cli.ts'
 import { bundledBinary } from './binary.ts'
 import { createFilesnapCli, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
 import { mark, unmark } from './mark.ts'
-import { foldPoints, reconcile, selectPoint } from './points.ts'
+import { foldPoints, selectPoint } from './points.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
 import { FALLBACK_COMMAND } from './config.ts'
 import type { FilesnapConfig } from './config.ts'
@@ -40,10 +41,11 @@ interface TrackState {
   /** The filesnap session id, or why this session cannot be tracked. */
   readonly binding: { readonly ok: true; readonly id: string; readonly cwd: string }
     | { readonly ok: false; readonly why: string }
-  /** Turns already captured, seeded from the log so a resume does not recapture. */
+  /** Turns confirmed in the engine index; resumed captures check that index first. */
   readonly captured: Set<number>
   /** Paths already declared, per turn, so one file edited twice is one spawn. */
   readonly declared: Map<number, Set<string>>
+  readonly capturing: Map<number, Promise<void>>
 }
 
 /**
@@ -88,6 +90,20 @@ function engineRefusal<T>(run: FilesnapRun, what: string): RewindResult<T> {
 export function currentTurn(session: Session): number {
   const last = session.snapshotEvents().findLast(event => event.type === 'turn/start')
   return last?.type === 'turn/start' ? last.data.turn : 0
+}
+
+/** Read the first human prompt of this turn without the list label's truncation. */
+export function promptForTurn(session: Session, target: number): string | undefined {
+  let turn: number | undefined
+  for (const event of session.snapshotEvents()) {
+    if (event.type === 'turn/start') turn = event.data.turn
+    else if (event.type === 'turn/end') turn = undefined
+    else if (turn === target && event.type === 'user/message' && event.data.source.kind === 'user') {
+      const text = event.data.content.filter(part => part.type === 'text').map(part => part.text).join('\n')
+      return text === '' ? undefined : text
+    }
+  }
+  return undefined
 }
 
 /** Per-file failures, named individually because a terminal list has no bound (filesnap D40). */
@@ -153,6 +169,7 @@ export class FilesnapRewind extends Service {
   private readonly previews = new WeakMap<Session, {
     preview: RewindPreview; fingerprint: string; expires: number
   }>()
+  private readonly cleanupTokens = new WeakMap<Session, { token: string; expires: number }>()
 
   /** The invoker, built once the executable has been resolved. */
   private cli: Promise<FilesnapCli | { readonly unavailable: string }> | undefined
@@ -361,7 +378,7 @@ export class FilesnapRewind extends Service {
   /**
    * The per-session binding and its caches.
    *
-   * `captured` is seeded from the log rather than kept only in memory: this
+   * `captured` is checked against the engine index before capturing: this
    * process may have resumed a session that already captured twenty turns, and
    * recapturing them would file a second manifest under a turn id that already
    * resolves to the first.
@@ -382,10 +399,7 @@ export class FilesnapRewind extends Service {
         : { ok: false, why: `filesnap refuses the session id "${session.id}" because ${explain(admitted.refusal)}` }
 
     const captured = new Set<number>()
-    for (const event of session.snapshotEvents()) {
-      if (event.type === 'filesnap/point') captured.add(event.data.turn)
-    }
-    const state: TrackState = { binding, captured, declared: new Map() }
+    const state: TrackState = { binding, captured, declared: new Map(), capturing: new Map() }
     this.tracked.set(session, state)
     if (!binding.ok) {
       this.warn(`filesnap: session "${session.id}" is not being tracked — ${binding.why}`)
@@ -410,6 +424,18 @@ export class FilesnapRewind extends Service {
    * @param signal - the turn's cancellation signal.
    */
   async capture(agent: Agent, turn: number, signal?: AbortSignal): Promise<void> {
+    const state = this.stateFor(agent.session)
+    const pending = state.capturing.get(turn)
+    if (pending !== undefined) return pending
+    const work = this.captureOnce(agent, turn, signal).catch(error => {
+      state.captured.delete(turn)
+      this.warn(`filesnap: snapshot capture failed: ${String(error)}`)
+    }).finally(() => { state.capturing.delete(turn) })
+    state.capturing.set(turn, work)
+    return work
+  }
+
+  private async captureOnce(agent: Agent, turn: number, signal?: AbortSignal): Promise<void> {
     const session = agent.session
     const state = this.stateFor(session)
     if (!state.binding.ok || state.captured.has(turn)) return
@@ -424,6 +450,15 @@ export class FilesnapRewind extends Service {
     const cli = await this.invoker()
     if ('unavailable' in cli) {
       this.warn(`filesnap: no capture for turn ${String(turn)} — ${cli.unavailable}`)
+      return
+    }
+    const existing = await cli.run(['log', '--session', state.binding.id, '--cwd', state.binding.cwd], state.binding.cwd, signal)
+    if (existing.exit !== 'ok') {
+      this.warn('filesnap: cannot verify existing snapshots; capture skipped to preserve earlier files.')
+      return
+    }
+    if (eventsOfType(existing, 'log.entry').some(event => stringField(event, 'turn', '') === point.id)) {
+      state.captured.add(turn)
       return
     }
     // Marked before the await settles rather than after: a second pre-step for
@@ -446,14 +481,7 @@ export class FilesnapRewind extends Service {
       this.warn(`filesnap: capture of turn ${String(turn)} reported no terminal event`)
       return
     }
-    session.append('filesnap/point', {
-      turn,
-      point: point.id,
-      manifest: stringField(done, 'manifest', ''),
-      reused: numberField(done, 'reused', 0),
-      hashed: numberField(done, 'hashed', 0),
-      dropped: numberField(done, 'dropped', 0),
-    })
+
   }
 
   /**
@@ -521,24 +549,53 @@ export class FilesnapRewind extends Service {
     if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
     const cli = await this.invoker()
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
-    const logged = foldPoints(agent.session.snapshotEvents())
-    if (logged.length === 0) return { ok: true, value: [] }
-    const run = await cli.run(
-      ['log', '--session', state.binding.id, '--cwd', state.binding.cwd],
-      state.binding.cwd,
-      signal,
-    )
-    if (run.exit !== 'ok') return engineRefusal(run, 'filesnap could not read the session log')
-    const resolvable = new Set(eventsOfType(run, 'log.entry').map(event => stringField(event, 'turn', '')))
-    // Which of these this session minted, asked of the minting rule rather
-    // than read out of the ids. An inherited point is not in this set, and is
-    // kept whatever this session's listing says.
-    const mintedHere = new Set<string>()
-    for (const point of logged) {
-      const minted = pointId(state.binding.id, point.turn)
-      if (minted.ok) mintedHere.add(minted.id)
+    const turns = foldPoints(agent.session.snapshotEvents())
+    let owners: Map<number, string>
+    try { owners = await this.turnOwners(agent.session, signal) }
+    catch (error) { return refuse({ kind: 'untracked', why: String(error) }) }
+    const entries = new Map<string, Set<string>>()
+    for (const owner of new Set(owners.values())) {
+      const run = await cli.run(['log', '--session', owner, '--cwd', state.binding.cwd], state.binding.cwd, signal)
+      if (run.exit !== 'ok') return engineRefusal(run, 'filesnap could not read snapshot references')
+      entries.set(owner, new Set(eventsOfType(run, 'log.entry').map(event => stringField(event, 'turn', ''))))
     }
-    return { ok: true, value: reconcile(logged, resolvable, mintedHere) }
+    const points: RewindPoint[] = []
+    for (const turn of turns) {
+      const owner = owners.get(turn.turn)
+      if (owner === undefined) continue
+      const id = pointId(owner, turn.turn)
+      if (id.ok && entries.get(owner)?.has(id.id)) points.push({ ...turn, point: id.id })
+    }
+    return { ok: true, value: points }
+
+  }
+
+  /** Resolve snapshot owners from DSH's existing fork prefix, including cold ancestors. */
+  private async turnOwners(session: Session, signal?: AbortSignal): Promise<Map<number, string>> {
+    const seen = new Set<string>()
+    const read = async (header: SessionHeader, events: readonly SessionEvent[], inherited: number): Promise<Map<number, string>> => {
+      if (seen.has(header.id)) throw new Error('Invalid cyclic session lineage.')
+      seen.add(header.id)
+      let parent = new Map<number, string>()
+      if (header.parentSession !== undefined && inherited > 0) {
+        const live = this.ctx.get('sessions')?.get(header.parentSession)
+        if (live !== undefined) parent = await read(live.header, live.snapshotEvents(), live.inheritedEventCount)
+        else {
+          const persistence = this.ctx.get('sessionPersistence')
+          if (persistence === undefined) throw new Error('The parent conversation must be available to resolve inherited snapshots.')
+          const source = await persistence.inspect(header.parentSession, signal)
+          parent = await read(source.meta, source.events, source.inheritedEventCount)
+        }
+      }
+      const result = new Map<number, string>()
+      for (const [index, event] of events.entries()) {
+        if (event.type !== 'turn/start') continue
+        const owner = index < inherited ? parent.get(event.data.turn) : header.id
+        if (owner !== undefined) result.set(event.data.turn, owner)
+      }
+      return result
+    }
+    return read(session.header, session.snapshotEvents(), session.inheritedEventCount)
   }
 
   /**
@@ -594,6 +651,40 @@ export class FilesnapRewind extends Service {
     }
     this.previews.set(agent.session, { preview, fingerprint: plan.value.fingerprint, expires: Date.now() + 300_000 })
     return { ok: true, value: preview }
+  }
+
+  /** Explain store-wide collection; the displayed sizes are usage, not reclaim estimates. */
+  async previewCleanup(agent: Agent, signal?: AbortSignal): Promise<RewindResult<CleanupPreview>> {
+    this.cleanupTokens.delete(agent.session)
+    const status = await this.status(agent, signal)
+    if (!status.ok) return status
+    const token = randomUUID()
+    this.cleanupTokens.set(agent.session, { token, expires: Date.now() + 300_000 })
+    const { workspace, recordsBytes, sharedContentBytes } = status.value
+    return { ok: true, value: { token, workspace, recordsBytes, sharedContentBytes } }
+  }
+
+  /** Reclaim unreferenced objects only; never delete sessions or retained recovery points. */
+  async cleanup(agent: Agent, token: string, signal?: AbortSignal): Promise<RewindResult<CleanupOutcome>> {
+    const saved = this.cleanupTokens.get(agent.session)
+    this.cleanupTokens.delete(agent.session)
+    if (saved?.token !== token || saved.expires < Date.now()) {
+      return refuse({ kind: 'engine', message: 'Cleanup confirmation expired. Run /rewind cleanup again.' })
+    }
+    if (agent.status === 'running') return refuse({ kind: 'agent-busy' })
+    const state = this.stateFor(agent.session)
+    if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
+    const cli = await this.invoker()
+    if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
+    const run = await cli.run(['gc'], state.binding.cwd, signal)
+    if (run.exit !== 'ok') return engineRefusal(run, 'Could not collect unreferenced snapshot data')
+    const done = lastEvent(run, 'gc.done')
+    const manifestsRemoved = numberField(done, 'manifestsRemoved', -1)
+    const blobsRemoved = numberField(done, 'blobsRemoved', -1)
+    if (run.refused !== 0 || !Number.isSafeInteger(manifestsRemoved) || !Number.isSafeInteger(blobsRemoved) || manifestsRemoved < 0 || blobsRemoved < 0) {
+      return refuse({ kind: 'engine', message: 'Cleanup returned an incomplete result. Check snapshot status before retrying.' })
+    }
+    return { ok: true, value: { manifestsRemoved, blobsRemoved } }
   }
 
   private async preparePreview(agent: Agent, selector: string, signal?: AbortSignal): Promise<RewindResult<{
@@ -723,32 +814,20 @@ export class FilesnapRewind extends Service {
     const deleted = numberField(done, 'deleted', 0)
     const failed = failures(run)
     const safety = stringField(done, 'safety', '')
-    // Recorded in the session the user is leaving, after the fork, so it is not
-    // part of the child's seed — the child's history ends before the turn this
-    // rewound to, and a marker inside it would describe a rewind it never had.
-    const record = agent.session.append('filesnap/rewound', {
-      point: point.point,
-      turn: point.turn,
-      child: child.value,
-      boundary: anchor,
-      written,
-      deleted,
-      failed: failed.length,
-      safety,
-    })
     // The conversation being left now shares its whole history with the fork,
     // so mark it where the choice is made. Reversible on purpose — see mark.ts
     // for why this is not an archive.
     const marked = this.retitle(agent.session, mark)
 
+    const promptText = promptForTurn(agent.session, point.turn)
     const outcome: RewindOutcome = {
+      ...promptText === undefined ? {} : { promptText },
       point,
       child: child.value,
       written,
       deleted,
       failures: failed,
       safety,
-      eventSeq: record.seq,
       ...marked === undefined ? {} : { markedTitle: marked },
     }
     return { ok: true, value: outcome }
@@ -792,13 +871,6 @@ export class FilesnapRewind extends Service {
     const deleted = numberField(done, 'deleted', 0)
     const failed = failures(run)
     const safety = stringField(done, 'safety', '')
-    const record = agent.session.append('filesnap/redone', {
-      written,
-      deleted,
-      failed: failed.length,
-      safety,
-      conflicts: [...conflicts],
-    })
     // Symmetric with the rewind: the conversation being returned to loses its
     // mark, and the fork being left picks one up. The parent is the session the
     // rewind forked out of — a redo only resolves at all when a rewind filed
@@ -817,8 +889,7 @@ export class FilesnapRewind extends Service {
         failures: failed,
         safety,
         conflicts,
-        eventSeq: record.seq,
-        ...parentId === undefined ? {} : { returnedTo: parentId },
+          ...parentId === undefined ? {} : { returnedTo: parentId },
         ...restored === undefined ? {} : { restoredTitle: restored },
       },
     }

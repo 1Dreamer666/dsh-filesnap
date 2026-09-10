@@ -2,7 +2,7 @@
 
 [README](../README.md) · [中文](rewind-preview.zh.md)
 
-Implemented in the development build, not released yet. The dependency is now `filesnap ^0.5.0`. Both the message action and `/rewind` preview first, retaining the existing fork and `/redo` behavior.
+Included in version 0.3.0. The dependency is now `filesnap ^0.5.0`. Both the message action and `/rewind` preview first, retaining the existing fork and `/redo` behavior.
 
 1. Click the rewind action beside an assistant turn to open the preview dialog.
 2. Check the target turn and complete file list. **Write / restore** covers overwriting existing files and restoring missing ones. **Delete** removes paths explicitly recorded absent in the target snapshot. Unchanged files are omitted.

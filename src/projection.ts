@@ -53,31 +53,12 @@ const pointSchema = z.object({
   }).optional(),
 })
 
-/** Where a rewind went, as it crosses the wire and as it is persisted. */
-const rewindSchema = z.object({
-  point: z.string(),
-  turn: z.number().int().nonnegative(),
-  child: z.string(),
-  at: z.number().int(),
-})
-
-const replySchema = z.object({
-  requestId: z.string(),
-  error: z.string().optional(),
-  child: z.string().optional(),
-  preview: z.object({
-    token: z.string(), point: z.string(), turn: z.number().int().nonnegative(),
-    changes: z.array(z.object({ path: z.string(), action: z.enum(['write', 'delete']) })),
-  }).optional(),
-})
-
 /**
  * The persisted fold state. `openTurn` is nullable rather than optional
  * because the cache round-trips through JSON, where `undefined` does not
  * survive and a key that vanishes is not the same value that went in.
  */
 const stateSchema = z.object({
-  lastReply: replySchema.optional(),
   points: z.array(pointSchema),
   openTurn: z.number().int().nonnegative().nullable(),
   lastMessage: z.object({
@@ -85,14 +66,11 @@ const stateSchema = z.object({
     id: z.string(),
     seq: z.number().int(),
   }).nullable(),
-  lastRewind: rewindSchema.optional(),
 })
 
 /** The client view. */
 const viewSchema = z.object({
-  lastReply: replySchema.optional(),
   points: z.array(pointSchema),
-  lastRewind: rewindSchema.optional(),
 })
 
 /**
@@ -100,7 +78,7 @@ const viewSchema = z.object({
  * rows from an older unit are discarded rather than forward-applied into
  * something that no longer means what it says.
  */
-const STATE_VERSION = 4
+const STATE_VERSION = 6
 
 /**
  * Register the `filesnap` projection when the deployment composes a registry.
@@ -116,13 +94,9 @@ export function registerProjection(ctx: Context): void {
       apply: reducePoints,
       wire: {
         viewSchema,
-        // A turn that was labelled but never captured is held in the fold
-        // state — the label has to survive until its capture lands — and is
-        // not a rewind target, so it does not cross the wire.
+        // Structural anchors only; the RPC joins these to available snapshots.
         view: state => ({
-          ...state.lastReply === undefined ? {} : { lastReply: state.lastReply },
           points: capturedPoints(state),
-          ...state.lastRewind === undefined ? {} : { lastRewind: state.lastRewind },
         }),
       },
       stateVersion: STATE_VERSION,

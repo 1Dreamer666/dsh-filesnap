@@ -1,26 +1,10 @@
-/**
- * The rewind menu's injected face: two verbs and nothing else.
- *
- * The live point list is not part of this face — it arrives through
- * `useProjection('filesnap')`. Inject carries callbacks; the framework hooks
- * carry state.
- *
- * @module
- */
+import type { RewindPoint, FilesnapProjection } from '../wire.ts'
 
-import type { RewindPoint, RewindPreview } from '../wire.ts'
-
-/** Settled outcome of one verb, rendered inline by the menu. */
-export interface RewindActionResult {
-  readonly preview?: RewindPreview | undefined
-  /** Whether the operation completed. */
-  readonly ok: boolean
-  /** Why it did not, when it did not. */
-  readonly error?: string
-}
+export type RewindActionResult = import('../wire.ts').UiReply
 
 /** Injected business face of the per-message rewind control. */
 export interface RewindActions {
+  usePoints: (projection: FilesnapProjection | undefined) => readonly RewindPoint[]
   onPreview: (point: RewindPoint) => Promise<RewindActionResult>
   /**
    * Rewind to one point: fork the conversation, put the files back into the
@@ -33,6 +17,9 @@ export interface RewindActions {
 
 /** Injected business face of the session-level header strip. */
 export interface RewindHeaderActions {
+  onOpenSession: (id: string) => void
+  onCleanupPreview: () => Promise<RewindActionResult>
+  onCleanupConfirm: (token: string) => Promise<RewindActionResult>
   /**
    * Reverse the rewind that landed in this session.
    * @returns whether the undo completed.
@@ -40,7 +27,7 @@ export interface RewindHeaderActions {
   onRedo: () => Promise<RewindActionResult>
   /**
    * Ask the engine what it holds and what it does not protect. The answer
-   * lands in the transcript as a command row, not in this strip.
+   * is shown in the independent snapshot panel.
    * @returns whether the query ran.
    */
   onStatus: () => Promise<RewindActionResult>

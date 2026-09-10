@@ -1,36 +1,4 @@
-/**
- * Rewind surface, browser half.
- *
- * Two registrations, and the split is the design:
- *
- * - **`conversation.chat.assistant-actions`** carries the rewind itself, one
- *   icon in each turn's own message row, beside copy and branch. The
- *   transcript already is the list of points — one per turn — so a panel that
- *   repeated it added a second thing to read and nothing to do.
- * - **`conversation.session.header.actions`** carries the two facts that are
- *   about the session rather than a turn: undoing the rewind that landed here,
- *   and asking the engine what it holds.
- *
- * The plugin owns no store, no refresh chain and no event listener: the point
- * list is the host-computed `filesnap` projection.
- *
- * What it does own is the **order of a rewind in the web**, which differs from
- * the headless one on purpose:
- *
- *   0. Preview the file plan and wait for the user to confirm.
- *   1. `sessions.fork(atSeq)` — the deployment's own fork, which composes the
- *      child's preset and attaches it to the workspace.
- *   2. `/rewind <point> --into <child> --confirm <token>` — the host puts the files back and
- *      files the undo record in that fork.
- *   3. `sessions.open(child)` — the user lands where the files landed.
- *
- * The host plugin can do step 1 itself and does so for a headless run. Here it
- * must not: a second fork beside the deployment's correct one would leave the
- * child out of the workspace it belongs to.
- *
- * @module dsh-filesnap/client
- */
-
+/** Browser controls use authenticated Connection RPC; only native turn anchors use a projection. */
 // Taken from cordis and the session package rather than from
 // `@deepseek-ai/dsh-client-runtime/client`, which the harness has since
 // removed. That package's `ClientContext` was `export type ClientContext =
@@ -56,7 +24,12 @@ import type { RewindActionResult, RewindActions, RewindHeaderActions } from './a
 import { RewindAction } from './RewindAction.tsx'
 import { RewindHeader } from './RewindHeader.tsx'
 import { en, zh, type RewindKey } from './locales.ts'
-import { requestReply } from './request.ts'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { UiReply } from '../wire.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import { MigrationPanel, type MigrationActions } from './MigrationPanel.tsx'
+import { pointReader } from './points.ts'
+import { refillPrompt } from './refill.ts'
 
 export { RewindAction } from './RewindAction.tsx'
 export { RewindHeader } from './RewindHeader.tsx'
@@ -74,7 +47,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'filesnap'
 
 /** Required services: the slot system, session control, and copy. */
-export const inject = ['slots', 'sessions', 'locale']
+export const inject = ['slots', 'sessions', 'locale', 'conversation', 'connection']
 
 /**
  * Client plugin body: the per-turn rewind control and the session-level strip.
@@ -86,35 +59,39 @@ export function apply(ctx: ClientContext): void {
 
   const sessions = ctx.sessions
 
-  /**
-   * Run one slash command against a session's agent and report the outcome.
-   *
-   * The command registry is the one host route a plugin outside the harness
-   * repository can reach without generating an RPC of its own, and every verb
-   * it needs is already there. A command's own text renders in the transcript
-   * as a command row; only admission comes back here.
-   *
-   * @param sessionId - the session whose agent executes it.
-   * @param line - the full command line, leading slash included.
-   * @returns whether the command was admitted.
-   */
-  const command = async (sessionId: SessionId, line: string): Promise<RewindActionResult> => {
-    const session = sessions.binding(sessionId)?.session
-    if (session === undefined) return { ok: false, error: `session "${sessionId}" is not open here` }
-    const result = await session.command(line)
-    if (!result.ok) return { ok: false, error: result.error.message }
-    if (!result.value.matched) return { ok: false, error: `the host has no "${line.split(' ')[0] ?? ''}" command` }
-    return { ok: true }
+  const connection = ctx.get('connection') as ConnectionHandle
+  const readers = new Map<string, ReturnType<typeof pointReader>>()
+  const request = async (sessionId: SessionId, endpoint: string, args: object = {}): Promise<UiReply> => {
+    try {
+      const result = await connection.rpc.call('/filesnap', endpoint, { sessionId, ...args })
+      if (!result.ok) return { ok: false, error: result.error.message }
+      const reply = result.value as UiReply
+      return typeof reply?.ok === 'boolean' ? reply : { ok: false, error: 'Invalid FileSnap response.' }
+    } catch (error) { return { ok: false, error: String(error) } }
   }
+  const reader = (sessionId: SessionId) => {
+    let usePoints = readers.get(sessionId)
+    if (usePoints === undefined) { usePoints = pointReader(() => request(sessionId, 'points')); readers.set(sessionId, usePoints) }
+    return usePoints
+  }
+  ctx.effect(() => () => { readers.clear() })
 
-  const rewindCommand = async (sessionId: SessionId, line: string): Promise<RewindActionResult> => {
-    const session = sessions.binding(sessionId)?.session
-    if (session === undefined) return { ok: false, error: 'The session is no longer open.' }
-    const requestId = crypto.randomUUID()
-    const reply = await requestReply(session.projections.faceOf('filesnap'), requestId,
-      () => command(sessionId, `${line} --request ${requestId}`))
-    return reply.error === undefined ? { ok: true, preview: reply.preview } : { ok: false, error: reply.error }
+  const maintenance = async <T,>(endpoint: string, payload: object): Promise<T> => {
+    const result = await connection.rpc.call('/filesnap', endpoint, payload)
+    if (!result.ok) throw new Error(result.error.message)
+    const refusal = result.value as { ok?: boolean; error?: string } | null
+    if (refusal?.ok === false) throw new Error(refusal.error ?? 'Migration failed.')
+    return result.value as T
   }
+  const migrationActions: MigrationActions = {
+    list: () => maintenance('migration-list', {}),
+    scan: task => maintenance('migration-scan', { task }),
+    migrate: token => maintenance('migration-apply', { token }),
+  }
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section', id: 'filesnap', order: 60, label: 'FileSnap', locale: NS,
+    inject: () => migrationActions,
+  }, MigrationPanel))
 
   ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
     name: 'conversation.chat.assistant-actions',
@@ -124,7 +101,8 @@ export function apply(ctx: ClientContext): void {
     order: 30,
     locale: NS,
     inject: (sessionId): RewindActions => ({
-      onPreview: point => rewindCommand(sessionId, `/rewind ${point.point}`),
+      usePoints: reader(sessionId),
+      onPreview: point => request(sessionId, 'preview', { point: point.point }),
       onRewind: async (point: RewindPoint, token: string): Promise<RewindActionResult> => {
         // An omitted `atSeq` does not mean "cut at the beginning" — the host
         // reads it as "the last completed turn", which would fork the newest
@@ -143,8 +121,16 @@ export function apply(ctx: ClientContext): void {
         } catch (error: unknown) {
           return { ok: false, error: String(error) }
         }
-        const done = await rewindCommand(sessionId, `/rewind ${point.point} --into ${child} --confirm ${token}`)
-        if (done.ok) sessions.open(child)
+        const done = await request(sessionId, 'rewind', { point: point.point, child, token })
+        if (done.ok && done.message !== undefined) return { ok: false, error: done.message }
+        if (done.ok) {
+          sessions.open(child)
+          const binding = sessions.binding(child)
+          if (binding !== undefined) {
+            try { refillPrompt(ctx.conversation.input.for(binding.ctx), done.promptText) }
+            catch (error) { ctx.logger.warn('filesnap: could not refill the prompt: %s', String(error)) }
+          }
+        }
         return done
       },
     }),
@@ -156,8 +142,11 @@ export function apply(ctx: ClientContext): void {
     order: 20,
     locale: NS,
     inject: (sessionId): RewindHeaderActions => ({
-      onRedo: () => command(sessionId, '/redo'),
-      onStatus: () => command(sessionId, '/rewind status'),
+      onOpenSession: id => sessions.open(id as SessionId),
+      onCleanupPreview: () => request(sessionId, 'cleanup-preview'),
+      onCleanupConfirm: token => request(sessionId, 'cleanup', { token }),
+      onRedo: () => request(sessionId, 'redo'),
+      onStatus: () => request(sessionId, 'status'),
     }),
   }, RewindHeader))
 }

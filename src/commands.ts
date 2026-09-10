@@ -17,11 +17,10 @@
 import type { CommandRuntime, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { FilesnapRewind, RewindDestination } from './service.ts'
-import type { RewindPreview } from './wire.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal } from './types.ts'
 
 /** What `/rewind` accepts, echoed back on a usage error. */
-const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>] [--confirm <token>] [--into <session id>] | /rewind status'
+const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>|cleanup] [--confirm <token>] [--into <session id>] | /rewind status'
   + ' — with no argument, lists the points this session can return to.'
 
 /** One parsed `/rewind` invocation. */
@@ -31,7 +30,7 @@ export type RewindCommand
     /** Ask the engine what it holds and what it does not protect. */
     | { readonly kind: 'status' }
     /** Rewind, forking the conversation here or filing into a caller's fork. */
-    | { readonly kind: 'rewind'; readonly selector: string; readonly into?: string; readonly confirm?: string; readonly request?: string }
+    | { readonly kind: 'rewind'; readonly selector: string; readonly into?: string; readonly confirm?: string }
     /** The words do not form a `/rewind`. */
     | { readonly kind: 'usage' }
 
@@ -55,12 +54,12 @@ export function parseRewind(rawInput: string): RewindCommand {
   // Never ambiguous with a point id: those are `<session>.t<n>`.
   if (selector === 'status') return rest.length === 0 ? { kind: 'status' } : { kind: 'usage' }
   if (selector.startsWith('--')) return { kind: 'usage' }
-  const options: { into?: string; confirm?: string; request?: string } = {}
+  const options: { into?: string; confirm?: string } = {}
   for (let i = 0; i < rest.length; i += 2) {
     const flag = rest[i]
     const value = rest[i + 1]
     if (value === undefined || !/^[\w.-]+$/u.test(value)) return { kind: 'usage' }
-    const key = flag === '--into' ? 'into' : flag === '--confirm' ? 'confirm' : flag === '--request' ? 'request' : undefined
+    const key = flag === '--into' ? 'into' : flag === '--confirm' ? 'confirm' : undefined
     if (key === undefined || options[key] !== undefined) return { kind: 'usage' }
     options[key] = value
   }
@@ -73,7 +72,7 @@ export function parseRewind(rawInput: string): RewindCommand {
  * @param refusal - why the operation did not happen.
  * @returns the command result a UI shows.
  */
-function refusalResult(refusal: RewindRefusal): CommandResult {
+export function refusalResult(refusal: RewindRefusal): CommandResult {
   switch (refusal.kind) {
     case 'untracked':
       return { kind: 'error', text: `This session has no snapshots: ${refusal.why}.` }
@@ -131,7 +130,7 @@ function listResult(points: readonly RewindPoint[]): CommandResult {
  * @param outcome - what the rewind did.
  * @returns the command result a UI shows.
  */
-function rewindResult(outcome: RewindOutcome): CommandResult {
+export function rewindResult(outcome: RewindOutcome): CommandResult {
   const label = outcome.point.label === undefined ? '' : ` (${outcome.point.label})`
   const lines = [
     `Rewound to turn ${String(outcome.point.turn)}${label}.`,
@@ -154,7 +153,8 @@ function rewindResult(outcome: RewindOutcome): CommandResult {
   if (outcome.markedTitle !== undefined) {
     lines.push(`This one is now listed as "${outcome.markedTitle}", so the two are told apart.`)
   }
-  return { kind: 'success', text: lines.join('\n'), sourceEventSeq: outcome.eventSeq }
+  if (outcome.promptText !== undefined) lines.push('', 'Prompt to edit and resend:', outcome.promptText)
+  return { kind: 'success', text: lines.join('\n') }
 }
 
 /**
@@ -163,7 +163,7 @@ function rewindResult(outcome: RewindOutcome): CommandResult {
  * @param outcome - what the undo did.
  * @returns the command result a UI shows.
  */
-function redoResult(outcome: RedoOutcome): CommandResult {
+export function redoResult(outcome: RedoOutcome): CommandResult {
   const lines = [
     'Rewind reversed.',
     `Files: ${String(outcome.written)} written, ${String(outcome.deleted)} deleted.`,
@@ -189,7 +189,7 @@ function redoResult(outcome: RedoOutcome): CommandResult {
       ? `Continue in ${outcome.returnedTo} — it is not open here, so its "rewound" mark stays until it is.`
       : `Continue in "${outcome.restoredTitle}" (${outcome.returnedTo}); this one is now marked instead.`)
   }
-  return { kind: 'success', text: lines.join('\n'), sourceEventSeq: outcome.eventSeq }
+  return { kind: 'success', text: lines.join('\n') }
 }
 
 /** Render a byte count the way a person reads one. */
@@ -211,7 +211,7 @@ function bytes(count: number): string {
  * @param status - what the engine reported.
  * @returns the command result a UI shows.
  */
-function statusResult(status: FilesnapStatus): CommandResult {
+export function statusResult(status: FilesnapStatus): CommandResult {
   const lines = [
     `Workspace: ${status.workspace}`,
     `Disk: ${bytes(status.recordsBytes)} of records here, ${bytes(status.sharedContentBytes)} of content shared with every workspace.`,
@@ -253,20 +253,29 @@ async function runRewind(service: FilesnapRewind, invocation: CommandInvocation)
     const status = await service.status(invocation.agent, invocation.signal)
     return status.ok ? statusResult(status.value) : refusalResult(status.refusal)
   }
-  const reply = (result: CommandResult, data: { preview?: RewindPreview; child?: string } = {}): CommandResult => {
-    if (command.request !== undefined) invocation.agent.session.append('filesnap/reply', {
-      requestId: command.request, ...data,
-      ...result.kind === 'error' ? { error: result.text } : {},
-    })
-    return result
-  }
   try {
+    if (command.selector === 'cleanup') {
+      if (command.into !== undefined) return { kind: 'error', text: 'Cleanup does not take --into.' }
+      if (command.confirm === undefined) {
+        const preview = await service.previewCleanup(invocation.agent, invocation.signal)
+        if (!preview.ok) return refusalResult(preview.refusal)
+        return { kind: 'success', text: [
+          'Snapshot cleanup — unreferenced data only, across the shared store.',
+          'Retained snapshots, redo recovery data, conversations and workspace files are kept.',
+          `Workspace records: ${bytes(preview.value.recordsBytes)}. Shared content: ${bytes(preview.value.sharedContentBytes)}.`,
+          'These are current usage figures, not estimates of space that can be reclaimed.',
+          `Confirm within 5 minutes: /rewind cleanup --confirm ${preview.value.token}`,
+        ].join('\n') }
+      }
+      const result = await service.cleanup(invocation.agent, command.confirm, invocation.signal)
+      return result.ok ? { kind: 'success', text: `Cleanup complete: ${result.value.manifestsRemoved} unreferenced manifests and ${result.value.blobsRemoved} content objects removed. Retained snapshots and redo data were kept.` } : refusalResult(result.refusal)
+    }
     if (command.confirm === undefined) {
-      if (command.into !== undefined) return reply({ kind: 'error', text: 'Preview first with /rewind <turn>, then use its --confirm token.' })
+      if (command.into !== undefined) return { kind: 'error', text: 'Preview first with /rewind <turn>, then use its --confirm token.' }
       const preview = await service.preview(invocation.agent, command.selector, invocation.signal)
-      if (!preview.ok) return reply(refusalResult(preview.refusal))
+      if (!preview.ok) return refusalResult(preview.refusal)
       const { value } = preview
-      return reply({ kind: 'success', text: [
+      return { kind: 'success', text: [
         `Rewind preview — before turn ${value.turn}.`,
         'The original conversation will be kept; continuing creates a branch.',
         ...value.changes.map(change => `  ${change.action === 'write' ? 'WRITE / RESTORE' : 'DELETE'}\t${JSON.stringify(change.path)}`),
@@ -274,16 +283,15 @@ async function runRewind(service: FilesnapRewind, invocation: CommandInvocation)
         'Workspace files have not changed. A recovery checkpoint was saved.',
         `Confirm within 5 minutes: /rewind ${value.point} --confirm ${value.token}`,
         'To cancel, do not run the confirmation command. If files change, preview again.',
-      ].join('\n') }, { preview: value })
+      ].join('\n') }
     }
     const destination: RewindDestination = command.into === undefined
       ? { kind: 'fork' }
       : { kind: 'into', session: SessionId(command.into) }
     const outcome = await service.rewind(invocation.agent, command.selector, destination, invocation.signal, command.confirm)
-    return outcome.ok ? reply(rewindResult(outcome.value), { child: outcome.value.child }) : reply(refusalResult(outcome.refusal))
-  } catch (error) {
-    return reply({ kind: 'error', text: String(error) })
-  }
+    return outcome.ok ? rewindResult(outcome.value) : refusalResult(outcome.refusal)
+  } catch (error) { return { kind: 'error', text: String(error) } }
+
 }
 
 /**
@@ -318,7 +326,7 @@ export function registerCommands(commands: CommandRuntime, service: FilesnapRewi
   commands.register({
     name: 'rewind',
     description: 'put the workspace and the conversation back to the start of an earlier turn',
-    input: { hint: '[<turn>|<point id>] [--confirm <token>] | status' },
+    input: { hint: '[<turn>|<point id>|cleanup] [--confirm <token>] | status' },
     handler: invocation => runRewind(service, invocation),
   })
   commands.register({

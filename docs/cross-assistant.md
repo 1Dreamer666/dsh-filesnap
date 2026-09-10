@@ -1,5 +1,7 @@
 # Cross-assistant integration experience
 
+> The release and project relationships below are the September 10, 2026 record. Current 0.3.0 source upgrades the engine and uses independent UI; see the [README](../README.md).
+
 FileSnap’s snapshot design originated in our published [codex-rewind](https://github.com/extracurricular-ai/codex-rewind) distribution (`codexr`). The independent engine now powers the DSH integration `dsh-filesnap` and the Pi extension [pi-better-rewind-redo](https://github.com/extracurricular-ai/pi-better-rewind-redo). As of September 10, 2026, the DSH release is 0.2.2 with `filesnap ^0.4.0`; Pi’s release is 0.1.1 with `filesnap 0.5.0`; codex-rewind is 0.151.0-rewind.0 and retains its own related inlined snapshot module.
 
 This provides cross-assistant integration and release experience. Codex is the design’s origin, not a direct consumer of the current standalone engine. These projects do not all use one engine version or automatically share fixes; this is not evidence of host-vendor endorsement, independent third-party adoption, or a measured lower failure rate.

@@ -50,8 +50,8 @@ function coverageLine(point: RewindPoint, t: RewindActionProps['t']): string | u
  * @param props - the message identity, the rewind verb, the projection seat, and the locale seat.
  * @returns the icon button, or nothing when this message closes no captured turn.
  */
-export function RewindAction({ messageId, onPreview, onRewind, useProjection, t }: RewindActionProps) {
-  const projection = useProjection('filesnap')
+export function RewindAction({ messageId, onPreview, onRewind, usePoints, useProjection, t }: RewindActionProps) {
+  const points = usePoints(useProjection('filesnap'))
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'confirming'>('idle')
   const [preview, setPreview] = useState<RewindPreview | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
@@ -60,7 +60,7 @@ export function RewindAction({ messageId, onPreview, onRewind, useProjection, t 
   const generation = useRef(0)
   const titleId = useId()
   const descriptionId = useId()
-  const point = projection?.points.find(candidate => candidate.messageId === messageId)
+  const point = points.find(candidate => candidate.messageId === messageId)
   useEffect(() => () => { generation.current++ }, [])
 
   const close = () => {

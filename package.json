@@ -1,6 +1,6 @@
 {
   "name": "dsh-filesnap",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "DSH Rewind & Redo — by FileSnap. A DeepSeek Harness plugin that restores conversations and tracked files together, preserves the original conversation in a branch, and lets /redo reverse the rewind. No Git required.",
   "type": "module",
   "main": "lib/index.js",
@@ -23,6 +23,7 @@
     "README.md",
     "README.zh.md",
     "docs/*.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "license": "Apache-2.0",
@@ -75,9 +76,11 @@
     "@deepseek-ai/dsh-commands": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
     "@deepseek-ai/dsh-fs": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
     "@deepseek-ai/dsh-llm": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
-    "@deepseek-ai/dsh-session": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-session": ">=0.1.2-rc.1",
     "@deepseek-ai/dsh-session-projection": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
-    "@deepseek-ai/dsh-subprocess": ">=0.0.1-rc.1 || >=0.1.0-rc.0"
+    "@deepseek-ai/dsh-subprocess": ">=0.0.1-rc.1 || >=0.1.0-rc.0",
+    "@deepseek-ai/dsh-client-connection": ">=0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-persistence": ">=0.1.2-rc.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -105,6 +108,12 @@
       "optional": true
     },
     "@deepseek-ai/dsh-subprocess": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-connection": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session-persistence": {
       "optional": true
     }
   },

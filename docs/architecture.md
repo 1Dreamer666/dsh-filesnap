@@ -2,220 +2,50 @@
 
 [README](../README.md) · [中文](architecture.zh.md)
 
-dsh-filesnap provides DSH browser controls, commands and conversation/file recovery. The
-[filesnap](https://github.com/extracurricular-ai/filesnap) engine captures and
-restores files; this plugin decides when to capture, what a point means in a
-forkable conversation, and how the transcript and filesystem operations are
-sequenced.
+## Responsibilities
 
-## The two layers
+The FileSnap engine owns bounded scans, content-addressed deduplication, restores, undo recovery data and garbage collection. The DSH plugin owns capture timing, native fork boundaries, previews and UI. Engine JSON Lines output is consumed by the current invocation, never copied into chat history.
 
-| Layer | Owns | Does not own |
-|---|---|---|
-| `filesnap` engine | bounded scan, content-addressed blobs, manifests, restore, undo records, garbage collection | conversations, dsh sessions, browser navigation |
-| `dsh-filesnap` plugin | turn lifecycle, pre-edit observations, session events, fork/restore order, commands, browser projection | the store format and file-moving implementation |
+## Capture and coverage
 
-The engine is a static Rust binary with versioned JSON Lines on stdout, human
-diagnostics on stderr and meaningful exit codes. The plugin's complete process
-adapter is [`src/cli.ts`](../src/cli.ts); it contains no rewind policy.
+`agent/pre-step` awaits capture before model requests and tools. Prepended `fs/write-intent` and `fs/edit-intent` observers capture pre-images, then delegate to host policy. Coverage follows `ctx.fs`, not a tool-name allowlist. Shell changes outside that seam depend on subsequent bounded turn scans.
 
-## Capture lifecycle
+The tracked set combines known files, observed paths and bounded recent scanning. Ignore rules, size limits and timing still constrain coverage. Manifests reuse identical content; only explicit tombstones authorize deletion. Capture failures do not block the model but offer no snapshot. Restore failures are reported per file.
 
-Three host attachments cover different mutation paths:
+## Native turns and snapshot references
 
-1. `agent/pre-step` waits for the deployment's decision. If the step enters,
-   the workspace is captured before the model request and before any tool runs.
-2. `fs/write-intent` records the target's pre-image immediately before a write.
-3. `fs/edit-intent` does the same immediately before an edit.
+No custom session events or separate operation journal are written. Native `turn/start`, messages, `parentSession` and `inheritedEventCount` identify which session owns a turn. Those identities join to the engine's snapshot index. Forks retain ancestor point ids, while their own new turns use the child id, preventing collisions between equally numbered turns.
 
-The filesystem listeners use `{ prepend: true }`. Those hooks are single-slot
-decision waterfalls, and a deployment policy may take the slot without calling
-the next listener. dsh-filesnap observes the target and delegates unchanged, so
-the deployment still owns the decision while the pre-image is read before it
-disappears.
+Cold ancestors are read through `sessionPersistence.inspect`. Deleting ancestor conversations or snapshots can make inherited targets unavailable, so retain them. Captures after restart consult the engine index instead of replacing an existing turn's original state.
 
-Coverage follows the `ctx.fs` seam rather than a list of tool names. A new tool
-is covered as soon as it writes through that seam. Shell writes do not pass
-through it, so they rely on the bounded scan at the next turn boundary.
+The `filesnap` projection folds only native structural anchors. Snapshot availability is fetched over independent RPC. Previews, operation results and cleanup results remain in current requests and browser memory, outside the projection cache.
 
-## The tracked set
+## Rewind ordering
 
-Each capture uses a bounded union rather than a full recursive copy:
+1. Resolve a point and prepare the file list, saving a rescue checkpoint in the engine store.
+2. Obtain user confirmation with a single-use token bound to the session and point, expiring after five minutes.
+3. The browser invokes DSH's `sessions.fork`, preserving deployment preset/workspace composition.
+4. The host rechecks files and ignore rules, restores the point and files undo data under the child.
+5. Open the child and refill the full original prompt only in an empty composer. Partial failures remain explicitly visible in the dialog.
 
-- file names already known to the workspace, including Git-tracked files;
-- paths declared by observed writes and edits, wherever those paths are;
-- a bounded recent-change scan for shell writes and other mutations outside the
-  filesystem seam.
+Cancel creates no branch and restores no workspace files. Validation is not a filesystem lock; external edits may race the final write. A refused restore can leave the already-created child in the session list. Headless commands fork through the service and return a child id.
 
-Unchanged bytes are stored once and referenced by multiple manifests. An
-ignored path is excluded symmetrically: no capture, no restore and no deletion.
+## Independent UI and transport
 
-## Rewind sequence
+Public slots provide `conversation.chat.assistant-actions`, `conversation.session.header.actions` and `settings.section`. FileSnap Settings hosts the versioned migration entry.
 
-The order is fixed:
+`ctx.connection.rpc.handle('/filesnap', …)` uses the browser Connection RPC with the host's Host/Origin fence and authentication. Requests are schema-validated and operations target an already-open agent. Buttons never invoke `session.command`, so they produce no `command/run` or `command/done` cards. Manually typed commands retain DSH's standard command path.
 
-```text
-1. select an explicit rewind point
-2. fork the conversation at that point
-3. capture a rescue point before changing files
-4. restore the target manifest into the fork
-5. record the rewind and its undo information in that fork
-6. open the fork (browser) or return its id (headless command)
-```
+The snapshot panel shows records, shared content, session snapshot counts and unprotected paths. Cleanup invokes only `gc`, preserving referenced snapshots and undo data without automatically deleting sessions.
 
-The fork must exist before restore. The engine files its undo record under the
-session named by `--undo-for`; that session must be the one in which the user
-lands, otherwise `/redo` would exist somewhere inaccessible.
+## Legacy compatibility
 
-The browser already has a deployment-aware fork path that composes the child's
-preset and workspace attachment. It therefore creates the child and calls
-`/rewind <point> --into <child>`. Headless use asks the host plugin to create
-the fork itself.
+Older builds modified the host's known-event set to read custom events, creating an uninstall dependency. This modification has been removed. The common migration entry adds `ignorable: true` to historical records without changing messages, sequence numbers or fork boundaries. [Migration workflow](migrations.md).
 
-## Restore safety invariants
+Tests persist new conversations through the real backend and reopen them in a separate DSH process that never loads the plugin. Migration checks cover JSONL, multi-frame Zstd, repeatability, backups, loaded sessions and logs changed after scanning.
 
-- A restore captures a rescue point before its first write.
-- A path is deleted only when the target manifest contains a positive tombstone
-  saying the path was absent.
-- Capture errors do not become tombstones. An unreadable path is skipped rather
-  than later interpreted as permission to delete it.
-- Per-file restore failures are reported individually; the remaining files are
-  still attempted.
-- Rewind is refused while the agent is in an active turn.
-- A capture that failed does not create a selectable rewind point.
+## Service API and build
 
-## Session events and projection
+`ctx.filesnap` exposes `points`, `preview`, `rewind`, `redo`, `status`, `previewCleanup` and `cleanup`, returning `{ ok: true, value }` or `{ ok: false, refusal }`. Direct service integrations can own their confirmation flow; command and browser paths require preview tokens.
 
-The plugin records three log-only events:
-
-| Event | Meaning |
-|---|---|
-| `filesnap/point` | a snapshot exists before this turn |
-| `filesnap/rewound` | this session was rewound and continues in a child |
-| `filesnap/redone` | the rewind that landed here was reversed |
-
-Keeping these records in the session log matters because a fork deep-copies its
-seed. A child therefore inherits the points belonging to the turns it keeps,
-even before it runs a new turn of its own.
-
-The browser does not parse the transcript. A `filesnap` session projection folds
-committed events into a client-safe value containing points and the most recent
-rewind record. The projection is optional, so a headless assembly without a
-projection registry still captures and exposes commands.
-
-## Browser/host boundary
-
-The host and browser code use different Cordis `Context` declarations. Values
-cross the boundary through plain types in [`src/wire.ts`](../src/wire.ts),
-preventing host-only context merges from changing the browser API's types.
-
-The same profile row mounts the host and makes the `./client` export available.
-The web shell serves the built `lib/client.js`; no static module table is
-modified.
-
-## Service API
-
-Other plugins can use `ctx.filesnap`:
-
-```ts
-const points = await ctx.filesnap.points(agent)
-if (points.ok) {
-  const outcome = await ctx.filesnap.rewind(
-    agent,
-    String(points.value[0].turn),
-  )
-}
-```
-
-`rewind` accepts `{ kind: 'fork' }` or `{ kind: 'into', session }`. Operations
-return `{ ok: true, value }` or `{ ok: false, refusal }`; callers receive a
-structured reason instead of having to parse an exception message.
-
-## Why the harness peers are optional
-
-The `@deepseek-ai/*` packages are peer dependencies because the plugin runs
-inside an already-composed harness. Bundling another Cordis or session package
-would create incompatible service classes and registries.
-
-They are marked optional so a plain `npm install dsh-filesnap` does not try to
-materialize a second, potentially conflicting harness release line. The dsh
-profile installer already supplies the packages from the active deployment.
-
-## The upstream event-registration gap
-
-dsh's persistence reader refuses a log holding a non-surface event type it does
-not know, unless the event's envelope carries `ignorable: true`
-(`session-persistence/src/coordinator.ts`, `assertEventsSupported`). The harness
-reserved that marker for exactly this case — an out-of-repository plugin's
-informational events — and every representation preserves it. But a plugin
-cannot set it: `Session.append` builds the envelope with `deepFreeze` and copies
-only the surface fields into it, on `0.1.2-rc.1` and on `master` alike. There is
-no option, no hook, and no write-side seam.
-
-dsh-filesnap therefore adds its three event types to the reader's known set at
-load. That declaration reaches one thing: the `@deepseek-ai/dsh-session` module
-instance the plugin imported. It fails to reach the reader in two situations:
-
-- **The plugin is not loaded.** Uninstalling it leaves sessions it captured
-  unopenable until it is installed again. The data is intact on disk.
-- **The reader holds a different instance of the same package.** A source
-  launch (`pnpm dsh`, via tsx) resolves the harness's own packages to `src/`,
-  while the plugin's import resolves to `lib/`. Two files, two Sets. The
-  session is refused with the plugin installed and running. The built CLI
-  (`node apps/cli/lib/bin.js web`) and an npm-installed dsh resolve everything
-  to `lib/` and are unaffected.
-
-`tests/persistence.spec.ts` pins the mechanism: one log written through the
-real store and JSONL backend, read back in this process (declaration present:
-opens) and in a child process that never loaded the plugin (refused, by name,
-at the point's seq).
-
-The durable fix belongs upstream and is small: let `append` accept
-`{ ignorable: true }` for a non-surface event and spread it into the frozen
-envelope. Reader, codec and seed validation already honour the field. When that
-lands, the child-process assertion is the one that flips, and the load-time
-declaration becomes legacy-only, for logs written before it.
-
-## Storage lifecycle
-
-The store lives in the platform data directory by default, never inside the
-project. Content remains reachable while a point references it; nothing is
-deleted merely for being old.
-
-The engine already provides `delete`, `gc` and `doctor`, but the plugin does not
-yet expose them as `/rewind` subcommands. Until it does, use the binary installed
-inside the profile:
-
-```shell
-~/.dsh/profiles/<profile>/node_modules/.bin/filesnap gc
-~/.dsh/profiles/<profile>/node_modules/.bin/filesnap doctor --workdir .
-~/.dsh/profiles/<profile>/node_modules/.bin/filesnap delete --session <id>
-```
-
-Run `/rewind status` first to inspect the workspace records, shared blob usage
-and unprotected paths.
-
-## Browser implementation
-
-The optional `./client` export adds:
-
-- a rewind action beside the existing actions on each completed assistant turn;
-- header actions for redo and store status.
-
-The transcript is already the list of turns, so the plugin does not add a
-second checkpoint panel. In the browser, the deployment creates the correctly
-composed child session, the host restores files into it, and the client opens
-that child. Headless use performs the fork in the host plugin.
-
-The browser bundle is typechecked and built during release. It does not yet have
-an automated in-browser test; that remains a tracked limitation.
-
-## Headless continuation
-
-A host-performed headless fork inherits the model route and preset, but not the deployment’s per-agent model selection or workspace attachment.
-
-## Using the engine separately
-
-The snapshot engine is also usable outside dsh through Rust
-(`cargo add filesnap`) or its versioned JSON Lines CLI. The complete subprocess
-adapter in this repository is [`src/cli.ts`](../src/cli.ts).
+Host and client compile separately with plain shared types in [`src/wire.ts`](../src/wire.ts). Optional host peers avoid installing a second Cordis/DSH runtime. The browser bundle uses the host build preset; this release is verified against DSH 0.1.2-rc.1.

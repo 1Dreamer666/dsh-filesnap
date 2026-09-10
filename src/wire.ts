@@ -1,18 +1,4 @@
-/**
- * The values that cross to the browser, and nothing else.
- *
- * Kept apart from [`types.ts`](./types.ts) on purpose. That module merges into
- * `SessionEventMap`, which reaches the host's cordis `Context` — and a browser
- * program that pulled those declarations in would see the host's `ctx.sessions`
- * merged onto the same key as the client runtime's, so `sessions.open` would
- * stop existing and `sessions.fork` would take the wrong argument. The
- * projection seam names this hazard and answers it the same way, with a
- * pure-type outlet: everything here is plain data with no dependency on either
- * side's `Context`.
- *
- * @module
- */
-
+/** Plain host/client data; no session-event declarations. */
 /** One place the workspace and the conversation can both be returned to. */
 export interface RewindPoint {
   /** The filesnap turn id — what `restore` is addressed by. */
@@ -66,26 +52,9 @@ export interface RewindPoint {
   readonly messageId?: string | undefined
 }
 
-/** Where a rewind out of a session went. */
-export interface RewindRecord {
-  /** The point the workspace was returned to. */
-  readonly point: string
-  /** The turn that point precedes. */
-  readonly turn: number
-  /** The session the conversation continues in. */
-  readonly child: string
-  /** Epoch ms the rewind was recorded. */
-  readonly at: number
-}
-
-/** What a client reads under the `filesnap` projection key. */
+/** Structural turn anchors only; snapshot availability is read through RPC. */
 export interface FilesnapProjection {
-  /** Correlated response to a browser preview/confirmation request. */
-  readonly lastReply?: RewindReply | undefined
-  /** The points this session can return to, oldest first. */
   readonly points: readonly RewindPoint[]
-  /** Where the last rewind out of this session went, when there was one. */
-  readonly lastRewind?: RewindRecord | undefined
 }
 
 /** A plan computed from the target snapshot and the current workspace. */
@@ -96,12 +65,16 @@ export interface RewindPreview {
   readonly changes: readonly { readonly path: string; readonly action: 'write' | 'delete' }[]
 }
 
-/** Commands use the projection to return results, not just RPC admission. */
-export interface RewindReply {
-  readonly requestId: string
-  readonly error?: string | undefined
-  readonly preview?: RewindPreview | undefined
-  readonly child?: string | undefined
+export interface CleanupPreview {
+  readonly token: string
+  readonly workspace: string
+  readonly recordsBytes: number
+  readonly sharedContentBytes: number
+}
+
+export interface CleanupOutcome {
+  readonly manifestsRemoved: number
+  readonly blobsRemoved: number
 }
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
@@ -109,4 +82,65 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     /** Rewind points, and where the last rewind went. */
     filesnap: FilesnapProjection
   }
+}
+
+/** Ephemeral UI response. Never persisted in a session or projection. */
+export interface UiReply {
+  readonly status?: FilesnapStatus | undefined
+  readonly ok: boolean
+  readonly error?: string | undefined
+  readonly points?: readonly RewindPoint[] | undefined
+  readonly preview?: RewindPreview | undefined
+  readonly promptText?: string | undefined
+  readonly child?: string | undefined
+  readonly message?: string | undefined
+  readonly cleanup?: CleanupPreview | undefined
+  readonly cleaned?: CleanupOutcome | undefined
+}
+
+export interface FilesnapStatus {
+  /** The workspace the store partitions by. */
+  readonly workspace: string
+  /** Every session with records in this workspace. */
+  readonly sessions: readonly {
+    readonly session: string
+    readonly turns: number
+    readonly earliest: string
+    readonly latest: string
+  }[]
+  /** Bytes this workspace's own records occupy. */
+  readonly recordsBytes: number
+  /** Bytes in the content store, shared with every other workspace. */
+  readonly sharedContentBytes: number
+  /** Files the scan saw and did not store, with the engine's reason for each. */
+  readonly unprotected: readonly { readonly path: string; readonly reason: string }[]
+}
+
+
+export interface MigrationTaskInfo {
+  readonly id: string
+  readonly from: string
+  readonly to: string
+  readonly name: string
+  readonly nameZh: string
+}
+export interface MigrationPlan {
+  readonly token: string
+  readonly task: string
+  readonly scanned: number
+  readonly entries: readonly {
+    readonly session: string
+    readonly state: 'ready' | 'busy' | 'unsupported' | 'error'
+    readonly events: number
+    readonly detail?: string | undefined
+  }[]
+}
+export interface MigrationReport {
+  readonly task: string
+  readonly entries: readonly {
+    readonly session: string
+    readonly state: 'migrated' | 'skipped' | 'error'
+    readonly backup?: string | undefined
+    readonly detail?: string | undefined
+  }[]
 }

@@ -130,27 +130,9 @@ $ npm run build:client
 
 ## session 拒绝打开：`unknown to this harness`
 
-```text
-Failed to load history: … session "…" contains event type "filesnap/point"
-(seq N) unknown to this harness and not marked ignorable; refusing to
-interpret the log
-```
+旧版写入的自定义事件可能导致卸载后无法打开。0.3.0 不再写这些事件。进入 **DSH 设置 → FileSnap → 数据迁移**，扫描旧会话并确认修复；新会话无需迁移。
 
-日志里有本插件的事件，而打开它的读取器没有本插件的类型声明。什么都没丢，日志和快照数据
-都完好。两种原因，看插件装没装就能分开：
-
-- **没装。** 在负责打开该 session 的 profile 里重新安装并挂载 dsh-filesnap。
-- **装了、在跑，但 dsh 是用 `pnpm dsh` 启动的。** 源码启动把 harness 的包解析到 `src/`，
-  插件的 import 解析到 `lib/`，声明落在了读取器不查的那份模块实例上。改用构建版 CLI 启动：
-
-  ```console
-  $ node apps/cli/lib/bin.js web
-  ```
-
-  或者用 npm 安装的 `@deepseek-ai/dsh`。两者把所有包都解析到 `lib/`，同一个 session 就能开。
-
-插件为什么不能直接把事件标成 `ignorable`，见
-[架构说明](architecture.zh.md#上游事件注册缺口)。
+如界面无法启动，可先停止 DSH，再使用独立离线工具。[迁移、备份和回滚说明](migrations.zh.md)。
 
 ## 有些文件没有被保护
 
@@ -168,20 +150,9 @@ workspace 之外或超出近期变化有界扫描的 shell 写入，只有同一
 
 ## 存储占用高于预期
 
-`/rewind status` 会区分 workspace record 和共享 blob。未变化的 blob 会在 point 和 session
-之间共享，因此总量不是完整副本之和。
+点击会话头部的快照状态按钮，在独立面板查看工作区索引和跨工作区共享内容。空间清理会先说明范围、要求确认，仅回收未引用数据，不删除仍有引用的快照或 redo 救援数据。
 
-插件还没有包装引擎的生命周期命令，但可以在 profile 中直接使用：
-
-```console
-$ ~/.dsh/profiles/web/node_modules/.bin/filesnap doctor --workdir .
-$ ~/.dsh/profiles/web/node_modules/.bin/filesnap delete --session <session-id>
-$ ~/.dsh/profiles/web/node_modules/.bin/filesnap gc
-```
-
-`doctor` 清理中断操作留下的残骸。`delete` 会从 filesnap store 中永久删除所选 session 的
-快照记录，只应在不再需要这些 rewind point 时运行。`gc` 回收已经不可达的 blob。这些命令
-都不会修改项目或 Git 仓库。
+如果清理后占用没有减少，通常表示内容仍被保留快照引用。自动保留策略和会话快照删除 UI 尚未提供；不要把当前用量当作预计释放量。
 
 ## 提交有效 bug report
 

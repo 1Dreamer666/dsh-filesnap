@@ -11,9 +11,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import { resolveConfig } from '../src/config.ts'
+import { uiRequest } from '../src/rpc.ts'
 import { FilesnapRewind } from '../src/service.ts'
 import { BINARY, nodeSubprocess, scratch } from './support.ts'
 
@@ -105,6 +106,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     // The slice `retitle` uses: liveness, checked by identity.
     ctx.provide('sessions', { get: (id: string) => live.get(id) })
     ctx.provide('agents', {
+      get: (id: string) => live.has(id) ? agentOn(live.get(id)!) : undefined,
       create(options: { sessionId: SessionId; seed?: readonly SessionEvent[]; meta?: { parentSession?: SessionId } }) {
         forked.push({
           id: options.sessionId,
@@ -129,6 +131,53 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     store.remove()
   })
 
+  it('serves points, previews, status and cleanup over RPC without adding conversation events', async () => {
+    const session = liveSessionAt(live, 'rpc-session', workspace.path)
+    const agent = agentOn(session)
+    writeFileSync(join(workspace.path, 'a.txt'), 'original')
+    await runTurn(session, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(session, 2, 'edit', () => service.capture(agent, 2))
+    writeFileSync(join(workspace.path, 'a.txt'), 'edited')
+    const before = session.snapshotEvents()
+    const request = (endpoint: string, args: object = {}) => uiRequest(ctx, service, endpoint, { sessionId: session.id, ...args }, new AbortController().signal)
+    expect((await request('points')).points).toHaveLength(2)
+    const filePreview = await request('preview', { point: '2' })
+    expect(filePreview.preview?.changes).toHaveLength(1)
+    expect((await request('status')).status?.recordsBytes).toBeGreaterThan(0)
+    const preview = await request('cleanup-preview')
+    expect(preview.cleanup).toBeDefined()
+    expect((await request('cleanup', { token: preview.cleanup!.token })).cleaned).toBeDefined()
+    expect((await service.points(agent)).ok).toBe(true)
+    expect(session.snapshotEvents()).toEqual(before)
+    await expect(request('rewind', { point: '2' })).rejects.toThrow('confirmation')
+    await expect(request('status', { unexpected: 'value' })).rejects.toThrow()
+    const wrongSeed = session.snapshotEvents()
+    const wrong = Session.create(SessionId('wrong-cut'), wrongSeed, { ...session.header, id: SessionId('wrong-cut'), parentSession: session.id, isSeeded: true }, SessionLogOffset(wrongSeed.length))
+    live.set(wrong.id, wrong)
+    await expect(request('rewind', { point: '2', token: filePreview.preview!.token, child: wrong.id })).rejects.toThrow('no longer matches')
+    expect(readFileSync(join(workspace.path, 'a.txt'), 'utf8')).toBe('edited')
+    const cut = session.snapshotEvents().findIndex(e => e.type === 'turn/start' && e.data.turn === 2)
+    const seed = session.snapshotEvents().slice(0, cut)
+    const child = Session.create(SessionId('rpc-child'), seed, { ...session.header, id: SessionId('rpc-child'), parentSession: session.id, isSeeded: true }, SessionLogOffset(seed.length))
+    live.set(child.id, child)
+    expect(await request('rewind', { point: '2', token: filePreview.preview!.token, child: child.id })).toMatchObject({ ok: true, child: 'rpc-child', promptText: 'edit' })
+    expect(readFileSync(join(workspace.path, 'a.txt'), 'utf8')).toBe('original')
+    expect(session.snapshotEvents()).toEqual(before)
+
+  })
+
+  it('rejects expired cleanup confirmations without losing snapshots', async () => {
+    const session = sessionAt('cleanup-session', workspace.path)
+    const agent = agentOn(session)
+    await runTurn(session, 1, 'look', () => service.capture(agent, 1))
+    expect((await service.cleanup(agent, 'not-issued')).ok).toBe(false)
+    const preview = await service.previewCleanup(agent)
+    if (!preview.ok) throw new Error('preview failed')
+    expect((await service.cleanup(agent, preview.value.token)).ok).toBe(true)
+    expect((await service.cleanup(agent, preview.value.token)).ok).toBe(false)
+    expect(await service.points(agent)).toMatchObject({ ok: true, value: [{ point: 'cleanup-session.t1' }] })
+  })
+
   it('records a rewind point per captured turn', async () => {
     const session = sessionAt('session-a', workspace.path)
     writeFileSync(join(workspace.path, 'a.txt'), 'v1\n')
@@ -137,9 +186,9 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     session.append('turn/start', { turn: 1 })
     await service.capture(agent, 1)
 
-    const point = session.snapshotEvents().find(event => event.type === 'filesnap/point')
-    expect(point?.type === 'filesnap/point' && point.data).toMatchObject({ turn: 1, point: 'session-a.t1' })
-    expect(point?.type === 'filesnap/point' && point.data.manifest).toMatch(/^[0-9a-f]{64}$/u)
+    expect(await service.points(agent)).toMatchObject({ ok: true, value: [{ turn: 1, point: 'session-a.t1' }] })
+    expect(session.snapshotEvents().map(event => event.type)).toEqual(['turn/start'])
+
   })
 
   it('previews real writes, missing files and deletions, without forking or restoring until confirmation', async () => {
@@ -169,7 +218,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(readFileSync(changed, 'utf8')).toBe('changed')
     expect(existsSync(missing)).toBe(false)
     expect(existsSync(created)).toBe(true)
-    expect(session.snapshotEvents().some(event => event.type === 'filesnap/rewound')).toBe(false)
+    expect(session.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
     const result = await service.rewind(agent, '2', { kind: 'fork' }, undefined, plan.value.token)
     expect(result.ok).toBe(true)
     expect(readFileSync(changed, 'utf8')).toBe('original')
@@ -218,17 +267,26 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     await service.capture(agent, 1)
     await service.capture(agent, 1)
     await service.capture(agent, 1)
-    expect(session.snapshotEvents().filter(event => event.type === 'filesnap/point')).toHaveLength(1)
+    expect((await service.points(agentOn(session))).ok).toBe(true)
+    expect(session.snapshotEvents().filter(event => event.type.startsWith('filesnap/'))).toHaveLength(0)
   })
 
-  it('does not recapture a turn a previous process already captured', async () => {
-    // The state is seeded from the log, so a resumed session does not file a
-    // second manifest under a turn id that already resolves to the first.
+  it('does not recapture after the plugin restarts', async () => {
     const session = sessionAt('session-a', workspace.path)
-    session.append('turn/start', { turn: 1 })
-    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'seeded', reused: 0, hashed: 0, dropped: 0 })
-    await service.capture(agentOn(session), 1)
-    expect(session.snapshotEvents().filter(event => event.type === 'filesnap/point')).toHaveLength(1)
+    const file = join(workspace.path, 'a.txt')
+    writeFileSync(file, 'original')
+    await runTurn(session, 1, 'look', () => service.capture(agentOn(session), 1))
+    session.append('turn/start', { turn: 2 })
+    await service.capture(agentOn(session), 2)
+    writeFileSync(file, 'changed')
+    await fiber.dispose()
+    fiber = await ctx.plugin(FilesnapRewind, resolveConfig({ command: BINARY, dataDir: store.path }))
+    service = ctx.filesnap
+    await service.capture(agentOn(session), 2)
+    session.append('turn/end', { turn: 2, reason: { kind: 'completed' } })
+    const result = await service.rewind(agentOn(session), '2', { kind: 'into', session: SessionId('heir') })
+    expect(result.ok).toBe(true)
+    expect(readFileSync(file, 'utf8')).toBe('original')
   })
 
   it('leaves a session with no working directory alone', async () => {
@@ -236,7 +294,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const session = Session.create(SessionId('session-nowhere'), undefined, header)
     session.append('turn/start', { turn: 1 })
     await service.capture(agentOn(session), 1)
-    expect(session.snapshotEvents().some(event => event.type === 'filesnap/point')).toBe(false)
+    expect(session.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
 
     const points = await service.points(agentOn(session))
     expect(points.ok).toBe(false)
@@ -249,7 +307,6 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     writeFileSync(join(workspace.path, 'a.txt'), 'v1\n')
     await runTurn(session, 1, 'first change', () => {})
     // Turn 1 was never captured, so the log has a turn the engine cannot resolve.
-    session.append('filesnap/point', { turn: 1, point: 'session-a.t1', manifest: 'gone', reused: 0, hashed: 0, dropped: 0 })
     await runTurn(session, 2, 'second change', () => {})
     await service.capture(agent, 2)
 
@@ -275,13 +332,11 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     // The child inherits the parent's log and has captured nothing itself.
     // The assistant messages come across with it: a seed without them carries
     // points no fork can anchor on, which is not what a fork looks like.
-    const child = sessionAt('session-b', workspace.path)
-    for (const event of parent.snapshotEvents()) {
-      if (event.type === 'filesnap/point') child.append('filesnap/point', event.data)
-      else if (event.type === 'turn/start') child.append('turn/start', event.data)
-      else if (event.type === 'turn/end') child.append('turn/end', event.data)
-      else if (event.type === 'assistant/message') child.append('assistant/message', event.data, { surfaceOp: 'append' })
-    }
+    live.set(parent.id, parent)
+    const seed = parent.snapshotEvents()
+    const child = Session.create(SessionId('session-b'), seed, {
+      ...parent.header, id: SessionId('session-b'), parentSession: parent.id, isSeeded: true,
+    }, SessionLogOffset(seed.length))
     const heir = agentOn(child)
 
     const points = await service.points(heir)
@@ -292,6 +347,26 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const outcome = await service.rewind(heir, '2', { kind: 'into', session: SessionId('session-c') })
     expect(outcome.ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('original\n')
+  })
+
+  it('resolves a nested fork through cold native ancestors and never borrows their excluded turns', async () => {
+    const parent = sessionAt('ancestor', workspace.path)
+    const agent = agentOn(parent)
+    for (const turn of [1, 2, 3]) await runTurn(parent, turn, `p${turn}`, () => service.capture(agent, turn))
+    const cut = parent.snapshotEvents().findIndex(e => e.type === 'turn/start' && e.data.turn === 3)
+    const seed = parent.snapshotEvents().slice(0, cut)
+    const child = Session.create(SessionId('branch'), seed, { ...parent.header, id: SessionId('branch'), parentSession: parent.id, isSeeded: true }, SessionLogOffset(seed.length))
+    await runTurn(child, 3, 'branch edit', () => service.capture(agentOn(child), 3))
+    const childSeed = child.snapshotEvents()
+    const grandchild = Session.create(SessionId('nested'), childSeed, { ...child.header, id: SessionId('nested'), parentSession: child.id }, SessionLogOffset(childSeed.length))
+    const ancestors = new Map([[parent.id, parent], [child.id, child]])
+    ctx.provide('sessionPersistence', { inspect: async (id: SessionId) => {
+      const source = ancestors.get(id)!
+      return { meta: source.header, events: source.snapshotEvents(), inheritedEventCount: source.inheritedEventCount }
+    } })
+    expect(await service.points(agentOn(grandchild))).toMatchObject({ ok: true, value: [
+      { point: 'ancestor.t1' }, { point: 'ancestor.t2' }, { point: 'branch.t3' },
+    ] })
   })
 
   it('forks the conversation, then restores the files into the fork', async () => {
@@ -326,16 +401,8 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(forked[0]?.seed.some(event => event.type === 'turn/start' && event.data.turn === 2)).toBe(false)
     expect(outcome.value.child).toBe(forked[0]?.id)
 
-    // The source log says where the user went.
-    const record = session.snapshotEvents().findLast(event => event.type === 'filesnap/rewound')
-    expect(record?.type === 'filesnap/rewound' && record.data).toMatchObject({
-      point: 'session-a.t2',
-      turn: 2,
-      child: forked[0]?.id,
-      written: 1,
-      failed: 0,
-    })
-    expect(record?.seq).toBe(outcome.value.eventSeq)
+    expect(session.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
+
   })
 
   it('cuts the fork at the end of the previous turn, not inside the one being rewound', async () => {
@@ -375,7 +442,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const redone = await service.redo(agentOn(child))
     expect(redone.ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('later work\n')
-    expect(child.snapshotEvents().some(event => event.type === 'filesnap/redone')).toBe(true)
+    expect(child.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
   })
 
   it('accepts a fork the caller already performed', async () => {

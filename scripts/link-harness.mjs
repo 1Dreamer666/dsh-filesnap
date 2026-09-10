@@ -63,6 +63,8 @@ const PACKAGES = [
   'packages/client/ui-primitives',
   'packages/client/ui-conversation',
   'packages/client/locale',
+  'packages/client/connection',
+  'packages/client/ui-settings',
 ]
 
 /** Third-party packages the browser half compiles against, taken from the harness's install. */

@@ -1,5 +1,8 @@
 # dsh-filesnap 与 dsh-rewind-plugin：一眼看懂怎么选
 
+> 以下保留 0.2.2 的历史审计证据。0.3.0 已加入文件预览确认、独立磁盘占用与清理面板，以及[多版本迁移](migrations.zh.md)，并移除自定义会话事件；当前能力以 [README](../README.zh.md) 为准。
+
+
 [README](../README.zh.md) · [English](comparison.md) · [去重实验](dedup-comparison.zh.md)
 
 **FileSnap 的优势是更广的文件去重、保留完整原对话，以及用 `/redo` 撤销选错的回退。** 本文围绕这些恢复需求比较；操作便利性改进见 [roadmap](roadmap.zh.md)。

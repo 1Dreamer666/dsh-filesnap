@@ -1,108 +1,13 @@
-/**
- * The durable record of what this plugin did, and the public view of it.
- *
- * Log-only session events, declaration-merged into `SessionEventMap`.
- * They carry no `surfaceOp` and contribute nothing to derived model history —
- * a rewind changes which files are on disk and which conversation the user is
- * standing in, and neither of those is a message.
- *
- * The reason they are session events at all, rather than a side table: a fork
- * deep-clones the seed, so a point recorded in the log travels into every child
- * that inherits the turn it belongs to. A side table keyed by session id would
- * not, and the child would offer no rewind points until it had run a turn of
- * its own.
- *
- * @module
- */
-
-import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
-import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+/** Outcomes returned directly to the caller. No custom session events. */
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { RewindPoint } from './wire.ts'
-import type { RewindReply } from './wire.ts'
 
-export type { FilesnapProjection, RewindPoint, RewindRecord } from './wire.ts'
-
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    'filesnap/reply': RewindReply
-    /**
-     * A snapshot of the workspace was taken for this turn and can be returned
-     * to. `point` is the filesnap turn id — the join key back to the store —
-     * and it carries the session because a harness turn number is unique only
-     * within its own session while filesnap's turn index is shared across every
-     * session in one workspace.
-     *
-     * Appended inside the open turn it describes, after the capture succeeded.
-     * A turn with no such event was not captured, and the reason is on stderr.
-     */
-    'filesnap/point': {
-      /** The harness turn this snapshot precedes. */
-      turn: number
-      /** The filesnap turn id this snapshot is addressed by. */
-      point: string
-      /** Content-addressed id of the manifest the capture wrote. */
-      manifest: string
-      /** Files already in the store, kept by reference rather than re-hashed. */
-      reused: number
-      /** Files read and hashed for this capture. */
-      hashed: number
-      /** How many files the scan saw and did not store. */
-      dropped: number
-    }
-    /**
-     * This session was rewound: the workspace went back to `point` and the
-     * conversation continues in `child`. Appended to the session the user
-     * rewound *out of*, after the fork, so it is not part of the child's seed —
-     * the child's history ends before the turn that was rewound to.
-     *
-     * `safety` is the point the rewind itself can be reversed to, and it is
-     * recorded even when files failed — especially then.
-     */
-    'filesnap/rewound': {
-      /** The filesnap turn id the workspace was returned to. */
-      point: string
-      /** The harness turn that point precedes. */
-      turn: number
-      /** The forked session the conversation continues in. */
-      child: SessionId
-      /** The seq the fork anchored on: inside the last turn the child keeps. */
-      boundary: number
-      /** Files written by the restore. */
-      written: number
-      /** Files the restore removed, each licensed by a tombstone. */
-      deleted: number
-      /** Files the restore could not write; each was named on its own event. */
-      failed: number
-      /** Manifest id of the safety checkpoint taken before anything was written. */
-      safety: string
-    }
-    /**
-     * A rewind was reversed in this session — the workspace returned to the
-     * state it held before the restore that landed here.
-     *
-     * `conflicts` names paths that changed between the rewind and this undo.
-     * They are reported rather than refused, because the safety checkpoint
-     * captured them before the undo wrote over them, so the work is
-     * recoverable; what must not happen is this reading as an uneventful
-     * success.
-     */
-    'filesnap/redone': {
-      /** Files written by the undo. */
-      written: number
-      /** Files the undo removed. */
-      deleted: number
-      /** Files the undo could not write. */
-      failed: number
-      /** Manifest id of the safety checkpoint taken before the undo wrote. */
-      safety: string
-      /** Paths that moved between the rewind and this undo, bounded by the engine. */
-      conflicts: string[]
-    }
-  }
-}
+export type { FilesnapProjection, RewindPoint } from './wire.ts'
 
 /** What a completed rewind did. */
 export interface RewindOutcome {
+  /** Complete plain-text prompt offered back to the child composer. */
+  readonly promptText?: string
   /** The point the workspace was returned to. */
   readonly point: RewindPoint
   /** The session the conversation continues in. */
@@ -115,12 +20,6 @@ export interface RewindOutcome {
   readonly failures: readonly { readonly path: string; readonly error: string }[]
   /** Manifest id of the safety checkpoint the rewind can itself be reversed to. */
   readonly safety: string
-  /**
-   * Seq of the `filesnap/rewound` event in the source session's log. A UI
-   * names it rather than parsing the summary text, so the lifecycle of the
-   * command and the domain record of what happened stay joined.
-   */
-  readonly eventSeq: SessionSeq
   /**
    * The marked title the conversation being left now carries. Absent when it
    * could not be retitled — it is not live, or the deployment composes no
@@ -137,23 +36,7 @@ export interface RewindOutcome {
  * raises. It is complete rather than sampled, because it is asked deliberately
  * rather than printed every turn.
  */
-export interface FilesnapStatus {
-  /** The workspace the store partitions by. */
-  readonly workspace: string
-  /** Every session with records in this workspace. */
-  readonly sessions: readonly {
-    readonly session: string
-    readonly turns: number
-    readonly earliest: string
-    readonly latest: string
-  }[]
-  /** Bytes this workspace's own records occupy. */
-  readonly recordsBytes: number
-  /** Bytes in the content store, shared with every other workspace. */
-  readonly sharedContentBytes: number
-  /** Files the scan saw and did not store, with the engine's reason for each. */
-  readonly unprotected: readonly { readonly path: string; readonly reason: string }[]
-}
+export type { FilesnapStatus } from './wire.ts'
 
 /** What a completed redo did. */
 export interface RedoOutcome {
@@ -167,8 +50,6 @@ export interface RedoOutcome {
   readonly safety: string
   /** Paths that moved between the rewind and this undo. */
   readonly conflicts: readonly string[]
-  /** Seq of the `filesnap/redone` event in this session's log. */
-  readonly eventSeq: SessionSeq
   /** The conversation this redo hands back to, when this session was forked from one. */
   readonly returnedTo?: SessionId
   /**
@@ -200,51 +81,3 @@ export type RewindRefusal
 export type RewindResult<T>
   = | { readonly ok: true; readonly value: T }
     | { readonly ok: false; readonly refusal: RewindRefusal }
-
-/** The log-only types this plugin appends. */
-export const FILESNAP_EVENT_TYPES = ['filesnap/point', 'filesnap/rewound', 'filesnap/redone', 'filesnap/reply'] as const
-
-/**
- * Declare these types to the persistence read path.
- *
- * **Without this, every session the plugin captures in becomes unopenable.**
- * The reader refuses a log holding a type it does not know unless the event is
- * marked `ignorable`, and both halves of that escape are closed to a plugin
- * outside the harness repository: `KNOWN_SESSION_EVENT_TYPES` is generated from
- * in-repo declarations — its own comment says downstream plugin events are
- * outside it "by construction", with a registration surface "deferred until
- * such a consumer exists" — and `Session.append` accepts no options at all for
- * a non-surface event, so the `ignorable` marker cannot be set from here.
- *
- * So this is that registration surface, taken unofficially. The set is a plain
- * runtime `Set`; adding to it is membership, not behaviour, and the refusal it
- * lifts is precisely the one `ignorable` was meant to lift for records like
- * these — losing a rewind point cannot change how the rest of a log reads.
- *
- * **It deliberately does not unwind.** Removing the types on unload would make
- * every log this plugin ever wrote unreadable again, which is the failure the
- * marker exists to prevent. That is also this shim's real cost, and it is worth
- * stating plainly: **uninstalling the plugin strands those sessions**. The fix
- * that removes the cost belongs upstream — either a registration surface, or an
- * `append` that can mark an event ignorable.
- */
-export function declareEventTypes(): void {
-  // FIXME(upstream-event-registration): this mutates another package's
-  // exported constant. `KNOWN_SESSION_EVENT_TYPES` is typed `ReadonlySet` and
-  // is a plain, unfrozen `Set` at runtime, so the cast below is the only thing
-  // standing between this plugin and a harness internal — there is no sanctioned
-  // interface here, and the harness could freeze the set or rebuild it from a
-  // generator at any time without warning.
-  //
-  // A release should not ship this quietly. It needs one of two upstream
-  // changes in deepseek-harness, and the second is the better one:
-  //
-  //   1. a registration surface for out-of-repo session event types — the
-  //      `known-event-types.ts` comment already names this as deferred work; or
-  //   2. an `append` that can set the envelope's `ignorable: true`. Better,
-  //      because an ignorable event is SKIPPED by a reader that does not know
-  //      it rather than refused — which would also make uninstalling this
-  //      plugin harmless, where today it strands every log the plugin wrote.
-  const known = KNOWN_SESSION_EVENT_TYPES as Set<string>
-  for (const type of FILESNAP_EVENT_TYPES) known.add(type)
-}

@@ -17,8 +17,8 @@ describe('parseRewind', () => {
   })
 
   it('accepts explicit confirmation and rejects duplicated or malformed flags', () => {
-    expect(parseRewind('3 --confirm token --into child --request req')).toEqual({
-      kind: 'rewind', selector: '3', confirm: 'token', into: 'child', request: 'req',
+    expect(parseRewind('3 --confirm token --into child')).toEqual({
+      kind: 'rewind', selector: '3', confirm: 'token', into: 'child',
     })
     for (const input of ['3 --confirm', '3 --confirm --into child', '3 --confirm a --confirm b', '3 --request a/b']) {
       expect(parseRewind(input)).toEqual({ kind: 'usage' })

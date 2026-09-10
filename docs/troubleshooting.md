@@ -143,32 +143,9 @@ deployment's fork API and navigates automatically.
 
 ## A session refuses to open with "unknown to this harness"
 
-```text
-Failed to load history: … session "…" contains event type "filesnap/point"
-(seq N) unknown to this harness and not marked ignorable; refusing to
-interpret the log
-```
+Older custom events may prevent reopening without the plugin. Version 0.3.0 writes no such events. Open **DSH Settings → FileSnap → Data migrations**, scan and confirm the compatibility repair. New conversations need no migration.
 
-The log holds this plugin's events and the reader that opened it did not have
-the plugin's type declaration. Nothing is lost; the log and the snapshot data
-are intact. Two causes, told apart by whether the plugin is installed:
-
-- **It is not installed.** Reinstall and mount dsh-filesnap in the profile that
-  opens the session.
-- **It is installed and running, and dsh was started with `pnpm dsh`.** A
-  source launch resolves the harness's packages to `src/` while the plugin's
-  import resolves to `lib/`, so the declaration lands on a different module
-  instance than the reader consults. Start dsh from the built CLI instead:
-
-  ```console
-  $ node apps/cli/lib/bin.js web
-  ```
-
-  or use an npm-installed `@deepseek-ai/dsh`. Both resolve every package to
-  `lib/`, and the same session opens.
-
-Why the plugin cannot simply mark its events `ignorable` is in
-[the architecture note](architecture.md#the-upstream-event-registration-gap).
+If the UI cannot start, stop DSH and use the standalone offline tool. [Migration, backup and rollback](migrations.md).
 
 ## Some files are not protected
 
@@ -187,22 +164,9 @@ are covered only if the same path is observed through `ctx.fs`.
 
 ## Storage use is higher than expected
 
-`/rewind status` separates workspace records from shared blobs. Unchanged blobs
-are shared across points and sessions, so the total is not a sum of full copies.
+Use the session header's snapshot status button to inspect workspace records and shared content separately. Cleanup explains its scope and asks for confirmation. It collects only unreferenced data, keeping retained snapshots and redo recovery data.
 
-The plugin does not yet wrap the engine's lifecycle commands. They are available
-inside the profile:
-
-```console
-$ ~/.dsh/profiles/web/node_modules/.bin/filesnap doctor --workdir .
-$ ~/.dsh/profiles/web/node_modules/.bin/filesnap delete --session <session-id>
-$ ~/.dsh/profiles/web/node_modules/.bin/filesnap gc
-```
-
-`doctor` clears interrupted-operation debris. `delete` permanently removes the
-selected session's snapshot records from the filesnap store; run it only when
-those rewind points are no longer needed. `gc` reclaims blobs that are already
-unreachable. None of these commands changes the project or Git repository.
+If usage stays unchanged, content may still be referenced. Automatic retention and session snapshot deletion UI are not implemented; displayed usage is not an estimate of reclaimable space.
 
 ## Collecting a useful bug report
 
