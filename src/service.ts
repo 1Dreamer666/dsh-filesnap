@@ -18,6 +18,8 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { randomUUID } from 'node:crypto'
+import type { RewindPreview } from './wire.ts'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
@@ -148,6 +150,9 @@ export class FilesnapRewind extends Service {
 
   /** Per-session state, dropped with the session it belongs to. */
   private readonly tracked = new WeakMap<Session, TrackState>()
+  private readonly previews = new WeakMap<Session, {
+    preview: RewindPreview; fingerprint: string; expires: number
+  }>()
 
   /** The invoker, built once the executable has been resolved. */
   private cli: Promise<FilesnapCli | { readonly unavailable: string }> | undefined
@@ -578,6 +583,56 @@ export class FilesnapRewind extends Service {
     }
   }
 
+  /** Plan without forking or changing workspace files. Prepare saves a recovery checkpoint. */
+  async preview(agent: Agent, selector: string, signal?: AbortSignal): Promise<RewindResult<RewindPreview>> {
+    this.previews.delete(agent.session)
+    const plan = await this.preparePreview(agent, selector, signal)
+    if (!plan.ok) return plan
+    const preview: RewindPreview = {
+      token: randomUUID(), point: plan.value.point.point, turn: plan.value.point.turn,
+      changes: plan.value.changes,
+    }
+    this.previews.set(agent.session, { preview, fingerprint: plan.value.fingerprint, expires: Date.now() + 300_000 })
+    return { ok: true, value: preview }
+  }
+
+  private async preparePreview(agent: Agent, selector: string, signal?: AbortSignal): Promise<RewindResult<{
+    point: RewindPoint; changes: RewindPreview['changes']; fingerprint: string
+  }>> {
+    if (agent.status === 'running') return refuse({ kind: 'agent-busy' })
+    const state = this.stateFor(agent.session)
+    if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
+    const available = await this.points(agent, signal)
+    if (!available.ok) return available
+    const point = selectPoint(available.value, selector)
+    if (point === undefined) return refuse({ kind: 'unknown-point', point: selector })
+    if (point.boundary === undefined) return refuse({ kind: 'fork-failed', message: 'This point has no completed turn before it to fork from.' })
+    const cli = await this.invoker()
+    if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
+    const run = await cli.run([
+      'prepare', '--session', state.binding.id, '--turn', `preview-${randomUUID()}`,
+      '--target', point.point, '--cwd', state.binding.cwd,
+    ], state.binding.cwd, signal)
+    if (run.exit !== 'ok') return engineRefusal(run, 'Cannot preview the rewind (FileSnap 0.5.0+ is required)')
+    const done = lastEvent(run, 'prepare.done')
+    const changes: { path: string; action: 'write' | 'delete' }[] = []
+    for (const event of eventsOfType(run, 'prepare.change')) {
+      if (typeof event['path'] !== 'string' || (event['action'] !== 'write' && event['action'] !== 'delete')) {
+        return refuse({ kind: 'engine', message: 'The engine returned an invalid file preview.' })
+      }
+      changes.push({ path: event['path'], action: event['action'] })
+    }
+    if (run.refused !== 0 || typeof done?.['manifest'] !== 'string' || typeof done['ignoreRules'] !== 'string'
+      || done['writes'] !== changes.filter(change => change.action === 'write').length
+      || done['deletes'] !== changes.filter(change => change.action === 'delete').length) {
+      return refuse({ kind: 'engine', message: 'The file preview is incomplete; no rewind was performed.' })
+    }
+    return { ok: true, value: {
+      point, changes,
+      fingerprint: JSON.stringify([currentTurn(agent.session), done['manifest'], done['ignoreRules'], changes]),
+    } }
+  }
+
   /**
    * Put the workspace and the conversation back to one point.
    *
@@ -592,7 +647,21 @@ export class FilesnapRewind extends Service {
     selector: string,
     destination: RewindDestination = { kind: 'fork' },
     signal?: AbortSignal,
+    confirmation?: string,
   ): Promise<RewindResult<RewindOutcome>> {
+    if (confirmation !== undefined) {
+      const saved = this.previews.get(agent.session)
+      this.previews.delete(agent.session)
+      if (saved === undefined || saved.preview.token !== confirmation || saved.expires < Date.now()
+        || (selector !== saved.preview.point && selector !== String(saved.preview.turn))) {
+        return refuse({ kind: 'engine', message: 'The confirmation expired or belongs to another point. Preview the rewind again.' })
+      }
+      const fresh = await this.preparePreview(agent, selector, signal)
+      if (!fresh.ok) return fresh
+      if (fresh.value.fingerprint !== saved.fingerprint) {
+        return refuse({ kind: 'engine', message: 'The workspace or ignore rules changed after preview. Preview the rewind again before confirming.' })
+      }
+    }
     const state = this.stateFor(agent.session)
     if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
     // A rewind while the agent is mid-turn would write over files the turn's

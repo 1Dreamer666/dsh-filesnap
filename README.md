@@ -16,6 +16,8 @@ Click beside an assistant turn to restore the conversation and tracked files tog
 The original conversation stays available. Picked the wrong point? `/redo` reverses the rewind.
 No Git repository is required.
 
+**New in the development build: preview and confirm file changes before rewind.** The button lists files to write, restore or delete before confirmation. Cancel leaves workspace files and conversation branches unchanged. `/rewind <turn>` also previews first. Not released yet; requires FileSnap 0.5.0+. [Workflow and limits](docs/rewind-preview.md).
+
 ![dsh-filesnap: conversation and workspace rewind together](assets/social-preview-whale-girl.jpg)
 
 [Watch the complete walkthrough · 2:29](https://youtu.be/WPEXKesR_EM) ·
@@ -115,7 +117,7 @@ The number identifies the state before that turn, not a number of turns to go ba
 
 ![The /rewind command and its arguments in the composer](assets/shot-2-rewind-command.png)
 
-**3. Pick a turn.** The conversation and files return to the selected state.
+**3. Pick a turn and confirm.** The development build shows the affected files first; confirmation restores the conversation and files. The screenshot shows the earlier release’s completed operation.
 The button opens the conversation to continue in; the original stays available.
 
 ![Two rewinds reported: files written and deleted, and the session each continues in](assets/shot-3-rewound.png)
@@ -155,7 +157,8 @@ version-stamped, source-audited comparison with other dsh rewind plugins, see
 | Command | Result |
 |---|---|
 | `/rewind` | List the workspace state captured before each turn. |
-| `/rewind <turn>` | Restore the conversation and tracked files to before the selected turn. |
+| `/rewind <turn>` | Development build: preview the files affected by returning to this turn. |
+| `/rewind <turn> --confirm <token>` | Development build: confirm with the token returned by the preview. |
 | `/redo` | Reverse the rewind that landed in the current session. |
 | `/rewind status` | Report stored data and files that are currently unprotected. |
 

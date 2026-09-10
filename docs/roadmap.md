@@ -4,6 +4,10 @@
 
 Updated **2026-09-10**, against **dsh-filesnap 0.2.2**. These are planned improvements, not shipped features or release-date commitments. The priorities below guide implementation; completion requires working behavior and verification.
 
+## Implemented, not released yet
+
+The development build adds file-change preview and confirmation to the button and `/rewind`, using FileSnap 0.5.0+. Cancel leaves workspace files and branches unchanged; confirmation rechecks file state. Line-by-line diffs and excluded-path display remain planned. [Workflow](rewind-preview.md).
+
 ## Planned work
 
 | Priority | Improvement | What completion means |
@@ -11,7 +15,7 @@ Updated **2026-09-10**, against **dsh-filesnap 0.2.2**. These are planned improv
 | P1 | **Snapshot cleanup commands and settings UI** | Expose engine collection and session deletion through the plugin; preview the selected scope and removals before confirming. Protect content referenced by retained snapshots and redo states. |
 | P1 | **Retention policies and optional automatic cleanup** | Configure age/count/storage policies and protected sessions; show the affected recovery points and report failures. Keep automatic cleanup opt-in. |
 | P1 | **Storage usage and deduplication inspection** | Show actual stored payload bytes, metadata and shared-object references separately; explain the measurement scope. Include commands/UI for inspecting storage health through the engine's `doctor` capability. |
-| P1 | **Recovery preview and diff view** | Show the target turn, files to write/delete, excluded paths and shared-workspace impact before applying a rewind. |
+| P1 | **Line-by-line diffs and excluded paths** | Extend the implemented file list with content diffs, excluded paths and reasons. |
 | P2 | **Conversation-only rewind** | Allow an explicit mode that leaves workspace files unchanged; specify its fork and redo behavior and distinguish it from synchronized conversation/file recovery. |
 | P2 | **Per-file recovery selection** | Select files from a captured point and preview the resulting changes; clearly show when the recovered files no longer correspond to the complete conversation state. |
 | P2 | **Smoother fork and redo navigation** | Make the original/child relationship and continuation target easier to see and open, including typed-command workflows. Retain the original conversation and explain the shared workspace. |

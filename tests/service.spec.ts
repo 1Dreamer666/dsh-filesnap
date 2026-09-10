@@ -5,7 +5,7 @@
  * happened — because none of that is visible from either half alone.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -140,6 +140,75 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const point = session.snapshotEvents().find(event => event.type === 'filesnap/point')
     expect(point?.type === 'filesnap/point' && point.data).toMatchObject({ turn: 1, point: 'session-a.t1' })
     expect(point?.type === 'filesnap/point' && point.data.manifest).toMatch(/^[0-9a-f]{64}$/u)
+  })
+
+  it('previews real writes, missing files and deletions, without forking or restoring until confirmation', async () => {
+    const session = sessionAt('preview-session', workspace.path)
+    const agent = agentOn(session)
+    const changed = join(workspace.path, '改动.txt')
+    const missing = join(workspace.path, 'missing.txt')
+    const created = join(workspace.path, 'created.txt')
+    const unchanged = join(workspace.path, 'unchanged.txt')
+    for (const file of [changed, missing, unchanged]) writeFileSync(file, 'original')
+    await runTurn(session, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(session, 2, 'edit', async () => {
+      await service.capture(agent, 2)
+      await service.declare(agent, 2, [created])
+      writeFileSync(created, 'new')
+      writeFileSync(changed, 'changed')
+      unlinkSync(missing)
+    })
+    const plan = await service.preview(agent, '2')
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) throw new Error(JSON.stringify(plan))
+    expect(plan.value.changes).toEqual(expect.arrayContaining([
+      { path: changed, action: 'write' }, { path: missing, action: 'write' }, { path: created, action: 'delete' },
+    ]))
+    expect(plan.value.changes).toHaveLength(3)
+    expect(forked).toHaveLength(0)
+    expect(readFileSync(changed, 'utf8')).toBe('changed')
+    expect(existsSync(missing)).toBe(false)
+    expect(existsSync(created)).toBe(true)
+    expect(session.snapshotEvents().some(event => event.type === 'filesnap/rewound')).toBe(false)
+    const result = await service.rewind(agent, '2', { kind: 'fork' }, undefined, plan.value.token)
+    expect(result.ok).toBe(true)
+    expect(readFileSync(changed, 'utf8')).toBe('original')
+    expect(readFileSync(missing, 'utf8')).toBe('original')
+    expect(existsSync(created)).toBe(false)
+    expect(forked).toHaveLength(1)
+    const repeated = await service.rewind(agent, '2', { kind: 'fork' }, undefined, plan.value.token)
+    expect(repeated.ok).toBe(false)
+    expect(forked).toHaveLength(1)
+  })
+
+  it.each(['files', 'ignore rules'])('refuses stale confirmation after %s change without creating a branch', async (change) => {
+    const session = sessionAt('stale-session', workspace.path)
+    const agent = agentOn(session)
+    const file = join(workspace.path, 'a.txt')
+    writeFileSync(file, 'original')
+    await runTurn(session, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(session, 2, 'edit', () => service.capture(agent, 2))
+    writeFileSync(file, 'edited')
+    const preview = await service.preview(agent, '2')
+    if (!preview.ok) throw new Error(JSON.stringify(preview))
+    if (change === 'files') writeFileSync(file, 'newer edit')
+    else writeFileSync(join(workspace.path, '.filesnapignore'), 'a.txt\n')
+    const result = await service.rewind(agent, '2', { kind: 'fork' }, undefined, preview.value.token)
+    expect(result).toMatchObject({ ok: false, refusal: { kind: 'engine', message: expect.stringContaining('changed after preview') } })
+    expect(forked).toHaveLength(0)
+    expect(readFileSync(file, 'utf8')).toBe(change === 'files' ? 'newer edit' : 'edited')
+  })
+
+  it('previews an empty change list and rejects missing confirmation tokens', async () => {
+    const session = sessionAt('empty-preview', workspace.path)
+    const agent = agentOn(session)
+    await runTurn(session, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(session, 2, 'look again', () => service.capture(agent, 2))
+    const preview = await service.preview(agent, '2')
+    expect(preview.ok && preview.value.changes).toEqual([])
+    const result = await service.rewind(agent, '2', { kind: 'fork' }, undefined, 'not-issued')
+    expect(result.ok).toBe(false)
+    expect(forked).toHaveLength(0)
   })
 
   it('captures a turn once, however often the step is proposed', async () => {

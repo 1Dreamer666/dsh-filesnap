@@ -8,10 +8,11 @@
  * @module
  */
 
-import type { RewindPoint } from '../wire.ts'
+import type { RewindPoint, RewindPreview } from '../wire.ts'
 
 /** Settled outcome of one verb, rendered inline by the menu. */
 export interface RewindActionResult {
+  readonly preview?: RewindPreview | undefined
   /** Whether the operation completed. */
   readonly ok: boolean
   /** Why it did not, when it did not. */
@@ -20,13 +21,14 @@ export interface RewindActionResult {
 
 /** Injected business face of the per-message rewind control. */
 export interface RewindActions {
+  onPreview: (point: RewindPoint) => Promise<RewindActionResult>
   /**
    * Rewind to one point: fork the conversation, put the files back into the
    * fork, and open it.
    * @param point - the point under the message that was clicked.
    * @returns whether the rewind completed.
    */
-  onRewind: (point: RewindPoint) => Promise<RewindActionResult>
+  onRewind: (point: RewindPoint, token: string) => Promise<RewindActionResult>
 }
 
 /** Injected business face of the session-level header strip. */

@@ -38,6 +38,17 @@ function view(ctx: Context, session: Session): FilesnapProjection | undefined {
 }
 
 describe('the filesnap projection', () => {
+  it('carries correlated preview and refusal replies through the real projection schema', async () => {
+    const { ctx, dispose } = await registry()
+    try {
+      const session = liveSession(ctx, 'preview-session')
+      const preview = { token: 'token', point: 's.t2', turn: 2, changes: [{ path: '/a.txt', action: 'delete' as const }] }
+      session.append('filesnap/reply', { requestId: 'preview', preview })
+      expect(view(ctx, session)?.lastReply).toEqual({ requestId: 'preview', preview })
+      session.append('filesnap/reply', { requestId: 'confirm', error: 'Workspace changed.' })
+      expect(view(ctx, session)?.lastReply).toEqual({ requestId: 'confirm', error: 'Workspace changed.' })
+    } finally { await dispose() }
+  })
   it('serves the points a session can return to', async () => {
     const { ctx, dispose } = await registry()
     try {

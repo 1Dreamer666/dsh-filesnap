@@ -61,12 +61,23 @@ const rewindSchema = z.object({
   at: z.number().int(),
 })
 
+const replySchema = z.object({
+  requestId: z.string(),
+  error: z.string().optional(),
+  child: z.string().optional(),
+  preview: z.object({
+    token: z.string(), point: z.string(), turn: z.number().int().nonnegative(),
+    changes: z.array(z.object({ path: z.string(), action: z.enum(['write', 'delete']) })),
+  }).optional(),
+})
+
 /**
  * The persisted fold state. `openTurn` is nullable rather than optional
  * because the cache round-trips through JSON, where `undefined` does not
  * survive and a key that vanishes is not the same value that went in.
  */
 const stateSchema = z.object({
+  lastReply: replySchema.optional(),
   points: z.array(pointSchema),
   openTurn: z.number().int().nonnegative().nullable(),
   lastMessage: z.object({
@@ -79,6 +90,7 @@ const stateSchema = z.object({
 
 /** The client view. */
 const viewSchema = z.object({
+  lastReply: replySchema.optional(),
   points: z.array(pointSchema),
   lastRewind: rewindSchema.optional(),
 })
@@ -88,7 +100,7 @@ const viewSchema = z.object({
  * rows from an older unit are discarded rather than forward-applied into
  * something that no longer means what it says.
  */
-const STATE_VERSION = 3
+const STATE_VERSION = 4
 
 /**
  * Register the `filesnap` projection when the deployment composes a registry.
@@ -108,6 +120,7 @@ export function registerProjection(ctx: Context): void {
         // state — the label has to survive until its capture lands — and is
         // not a rewind target, so it does not cross the wire.
         view: state => ({
+          ...state.lastReply === undefined ? {} : { lastReply: state.lastReply },
           points: capturedPoints(state),
           ...state.lastRewind === undefined ? {} : { lastRewind: state.lastRewind },
         }),

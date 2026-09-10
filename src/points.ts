@@ -24,7 +24,7 @@
  */
 
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import type { RewindPoint, RewindRecord } from './wire.ts'
+import type { RewindPoint, RewindRecord, RewindReply } from './wire.ts'
 
 /** How much of a user's opening message labels a point in a list. */
 const LABEL_MAX_CHARS = 72
@@ -37,6 +37,7 @@ const LABEL_MAX_CHARS = 72
  * `null` rather than absent for the same reason.
  */
 export interface PointsState {
+  readonly lastReply?: RewindReply | undefined
   /** The points found so far, in conversation order. */
   readonly points: readonly RewindPoint[]
   /** The turn currently open, so a `user/message` knows which point it labels. */
@@ -98,6 +99,8 @@ function label(content: readonly { type: string; text?: string }[]): string | un
  */
 export function reducePoints(state: PointsState, event: SessionEvent): PointsState {
   switch (event.type) {
+    case 'filesnap/reply':
+      return { ...state, lastReply: event.data }
     case 'turn/start':
       return { ...state, openTurn: event.data.turn }
     case 'turn/end':

@@ -190,6 +190,34 @@ describe.skipIf(BINARY === undefined)('the plugin as a deployment mounts it', ()
     expect(readFileSync(file, 'utf8')).toBe('original\n')
   })
 
+  it('requires confirmation through the registered command and projects both preview and execution results', async () => {
+    const agent = agentAt('command-preview', workspace.path)
+    const file = join(workspace.path, 'notes.txt')
+    writeFileSync(file, 'original')
+    await dispatchTurn(ctx, agent, 1, 'look')
+    await dispatchTurn(ctx, agent, 2, 'edit')
+    writeFileSync(file, 'edited')
+    const commands = ctx.get('commands')!
+    const run = commands.find(agent, 'rewind')!.handler
+    const invoke = (rawInput: string) => run({
+      agent, rawInput, commandId: 'test-command' as never, attachments: [], signal: new AbortController().signal,
+    })
+    const result = await invoke('2 --request preview-request')
+    expect(result.kind).toBe('success')
+    expect(result.text).toContain('WRITE / RESTORE')
+    expect(readFileSync(file, 'utf8')).toBe('edited')
+    const event = agent.session.snapshotEvents().findLast(event => event.type === 'filesnap/reply')
+    const preview = event?.type === 'filesnap/reply' ? event.data.preview : undefined
+    expect(preview?.changes).toEqual([{ path: file, action: 'write' }])
+    expect((await invoke('2 --into child --request rejected')).kind).toBe('error')
+    expect(readFileSync(file, 'utf8')).toBe('edited')
+    const confirmed = await invoke(`2 --confirm ${preview!.token} --into child --request confirmed`)
+    expect(confirmed.kind).toBe('success')
+    expect(readFileSync(file, 'utf8')).toBe('original')
+    const last = agent.session.snapshotEvents().findLast(event => event.type === 'filesnap/reply')
+    expect(last?.type === 'filesnap/reply' && last.data).toEqual({ requestId: 'confirmed', child: 'child' })
+  })
+
   it('records a pre-edit image even though the fs policy owns the decision slot', async () => {
     // `fs/write-intent` and `fs/edit-intent` are single-slot decision
     // waterfalls, and the deployment's policy takes the slot without calling

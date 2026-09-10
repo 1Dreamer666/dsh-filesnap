@@ -25,6 +25,41 @@
 
 .failure {
   margin-left: 4px;
-  color: var(--dsw-text-danger);
+  color: var(--dsw-alias-state-error-primary, #c33);
   font-size: var(--dsw-font-size-xs);
 }
+
+.dialog {
+  box-sizing: border-box;
+  width: min(640px, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--dsw-alias-border-l1, #888);
+  border-radius: 12px;
+  color: var(--dsw-alias-label-primary, CanvasText);
+  background: var(--dsw-alias-bg-layer-1, Canvas);
+  text-align: start;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.dialog h2 { margin: 0 0 12px; font-size: 18px; }
+.changes { max-height: 40dvh; overflow: auto; list-style: none; padding: 0; }
+.changes li { display: flex; gap: 12px; padding: 8px 0; }
+.changes strong { flex: 0 0 100px; }
+.changes code { white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; }
+.deletion { color: var(--dsw-alias-state-error-primary, #c33); }
+.buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+.buttons button {
+  padding: 8px 12px;
+  border: 1px solid var(--dsw-alias-border-l1, #888);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.buttons button:hover:not(:disabled) { background: var(--dsw-fill-hover, rgb(128 128 128 / 12%)); }
+.buttons button:disabled { cursor: default; opacity: 0.5; }

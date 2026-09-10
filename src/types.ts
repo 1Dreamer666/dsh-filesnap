@@ -1,7 +1,7 @@
 /**
  * The durable record of what this plugin did, and the public view of it.
  *
- * Three log-only session events, declaration-merged into `SessionEventMap`.
+ * Log-only session events, declaration-merged into `SessionEventMap`.
  * They carry no `surfaceOp` and contribute nothing to derived model history —
  * a rewind changes which files are on disk and which conversation the user is
  * standing in, and neither of those is a message.
@@ -18,11 +18,13 @@
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { RewindPoint } from './wire.ts'
+import type { RewindReply } from './wire.ts'
 
 export type { FilesnapProjection, RewindPoint, RewindRecord } from './wire.ts'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
+    'filesnap/reply': RewindReply
     /**
      * A snapshot of the workspace was taken for this turn and can be returned
      * to. `point` is the filesnap turn id — the join key back to the store —
@@ -199,8 +201,8 @@ export type RewindResult<T>
   = | { readonly ok: true; readonly value: T }
     | { readonly ok: false; readonly refusal: RewindRefusal }
 
-/** The three log-only types this plugin appends. */
-export const FILESNAP_EVENT_TYPES = ['filesnap/point', 'filesnap/rewound', 'filesnap/redone'] as const
+/** The log-only types this plugin appends. */
+export const FILESNAP_EVENT_TYPES = ['filesnap/point', 'filesnap/rewound', 'filesnap/redone', 'filesnap/reply'] as const
 
 /**
  * Declare these types to the persistence read path.

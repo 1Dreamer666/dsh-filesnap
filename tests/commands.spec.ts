@@ -16,6 +16,15 @@ describe('parseRewind', () => {
     expect(parseRewind('3 --into session-b')).toEqual({ kind: 'rewind', selector: '3', into: 'session-b' })
   })
 
+  it('accepts explicit confirmation and rejects duplicated or malformed flags', () => {
+    expect(parseRewind('3 --confirm token --into child --request req')).toEqual({
+      kind: 'rewind', selector: '3', confirm: 'token', into: 'child', request: 'req',
+    })
+    for (const input of ['3 --confirm', '3 --confirm --into child', '3 --confirm a --confirm b', '3 --request a/b']) {
+      expect(parseRewind(input)).toEqual({ kind: 'usage' })
+    }
+  })
+
   it('tolerates the whitespace an adapter leaves on rawInput', () => {
     expect(parseRewind('  3   --into   session-b  ')).toEqual({ kind: 'rewind', selector: '3', into: 'session-b' })
   })

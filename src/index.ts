@@ -38,7 +38,7 @@ export { isMarked, mark, REWOUND_MARK, unmark } from './mark.ts'
 export type { RewindCommand } from './commands.ts'
 export { capturedPoints, foldPoints, initialPoints, reconcile, reducePoints, selectPoint } from './points.ts'
 export type { PointsState } from './points.ts'
-export type { FilesnapProjection, RewindRecord } from './wire.ts'
+export type { FilesnapProjection, RewindRecord, RewindPreview, RewindReply } from './wire.ts'
 export type {
   FilesnapStatus,
   RedoOutcome,

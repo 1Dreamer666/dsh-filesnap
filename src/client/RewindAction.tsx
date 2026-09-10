@@ -14,10 +14,10 @@
  * @module
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { IconRefreshOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { RewindPoint } from '../wire.ts'
+import type { RewindPoint, RewindPreview } from '../wire.ts'
 import type { RewindActions } from './actions.ts'
 import css from './RewindAction.module.css'
 
@@ -50,53 +50,109 @@ function coverageLine(point: RewindPoint, t: RewindActionProps['t']): string | u
  * @param props - the message identity, the rewind verb, the projection seat, and the locale seat.
  * @returns the icon button, or nothing when this message closes no captured turn.
  */
-export function RewindAction({ messageId, onRewind, useProjection, t }: RewindActionProps) {
+export function RewindAction({ messageId, onPreview, onRewind, useProjection, t }: RewindActionProps) {
   const projection = useProjection('filesnap')
-  const [pending, setPending] = useState(false)
+  const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'confirming'>('idle')
+  const [preview, setPreview] = useState<RewindPreview | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
-  // React state disables the control on the next render; the ref closes the
-  // same-render window, so a double click cannot start two rewinds.
-  const pendingRef = useRef(false)
-
+  const dialog = useRef<HTMLDialogElement>(null)
+  const busy = useRef(false)
+  const generation = useRef(0)
+  const titleId = useId()
+  const descriptionId = useId()
   const point = projection?.points.find(candidate => candidate.messageId === messageId)
+  useEffect(() => () => { generation.current++ }, [])
 
-  const run = useCallback(async (target: RewindPoint): Promise<void> => {
-    if (pendingRef.current) return
-    pendingRef.current = true
-    setPending(true)
+  const close = () => {
+    if (phase === 'confirming') return
+    generation.current++
+    busy.current = false
+    setPhase('idle')
+    setPreview(null)
+    dialog.current?.close()
+  }
+
+  const load = async (target: RewindPoint) => {
+    if (busy.current) return
+    busy.current = true
+    const attempt = ++generation.current
+    setPhase('loading')
+    setPreview(null)
     setFailure(null)
-    const result = await onRewind(target)
-    pendingRef.current = false
-    setPending(false)
-    if (!result.ok) setFailure(result.error ?? '')
-  }, [onRewind])
+    dialog.current?.showModal()
+    try {
+      const result = await onPreview(target)
+      if (attempt !== generation.current) return
+      if (result.ok && result.preview !== undefined && result.preview.point === target.point) setPreview(result.preview)
+      else setFailure(result.error ?? t('previewUnavailable'))
+    } catch (error) {
+      if (attempt === generation.current) setFailure(String(error))
+    } finally {
+      if (attempt === generation.current) { busy.current = false; setPhase('ready') }
+    }
+  }
 
-  // No snapshot for this message: either the host plugin is not loaded, or this
-  // is not the message that closed a captured turn. Nothing to offer, and a
-  // disabled control would only ask the reader to work out why.
+  const confirm = async (target: RewindPoint) => {
+    if (busy.current || preview === null) return
+    busy.current = true
+    const attempt = generation.current
+    setPhase('confirming')
+    setFailure(null)
+    try {
+      const result = await onRewind(target, preview.token)
+      if (attempt !== generation.current) return
+      setPreview(null) // A token is single-use, including failed confirmations.
+      if (result.ok) dialog.current?.close()
+      else setFailure(result.error ?? t('previewUnavailable'))
+    } catch (error) {
+      if (attempt === generation.current) { setPreview(null); setFailure(String(error)) }
+    } finally {
+      if (attempt === generation.current) { busy.current = false; setPhase('ready') }
+    }
+  }
+
   if (point === undefined) return null
-
   const covered = coverageLine(point, t)
-  const label = point.label === undefined
-    ? t('rewindHere')
-    : t('rewindTo', { label: point.label })
-
+  const label = point.label === undefined ? t('rewindHere') : t('rewindTo', { label: point.label })
   return (
     <>
       <Tooltip label={covered === undefined ? label : `${label}\n${covered}`} side="bottom" delayMs={500}>
-        <button
-          type="button"
-          className={css.action}
-          disabled={pending}
-          aria-label={label}
-          onClick={() => { void run(point) }}
-        >
+        <button type="button" className={css.action} disabled={phase === 'loading' || phase === 'confirming'}
+          aria-label={label} onClick={() => { void load(point) }}>
           <IconRefreshOutline16 size={14} />
         </button>
       </Tooltip>
-      {failure !== null && (
-        <span className={css.failure} role="alert">{t('failed', { reason: failure })}</span>
-      )}
+      <dialog ref={dialog} className={css.dialog} aria-labelledby={titleId} aria-describedby={descriptionId}
+        onCancel={event => { event.preventDefault(); close() }}>
+        <h2 id={titleId}>{t('previewTitle', { turn: String(point.turn) })}</h2>
+        <p>{label}</p>
+        <p id={descriptionId}>{t('previewExplanation')}</p>
+        {phase === 'loading' && <p role="status">{t('previewLoading')}</p>}
+        {preview !== null && <>
+          <p>{t('previewCounts', {
+            written: String(preview.changes.filter(change => change.action === 'write').length),
+            deleted: String(preview.changes.filter(change => change.action === 'delete').length),
+          })}</p>
+          {preview.changes.length === 0 ? <p>{t('previewEmpty')}</p> :
+            <ul className={css.changes} aria-label={t('previewFiles')}>
+              {preview.changes.map(change => <li key={change.path}>
+                <strong className={change.action === 'delete' ? css.deletion : undefined}>
+                  {t(change.action === 'delete' ? 'previewDelete' : 'previewWrite')}
+                </strong>
+                <code>{change.path}</code>
+              </li>)}
+            </ul>}
+          <p>{t('previewRefreshNotice')}</p>
+        </>}
+        {failure !== null && <p className={css.failure} role="alert">{t('failed', { reason: failure })}</p>}
+        <div className={css.buttons}>
+          <button type="button" disabled={phase === 'confirming'} onClick={close}>{t('cancel')}</button>
+          {failure !== null && <button type="button" disabled={phase !== 'ready'} onClick={() => { void load(point) }}>{t('previewRetry')}</button>}
+          <button type="button" disabled={preview === null || phase !== 'ready'} onClick={() => { void confirm(point) }}>
+            {t(phase === 'confirming' ? 'rewinding' : 'confirmRewind')}
+          </button>
+        </div>
+      </dialog>
     </>
   )
 }

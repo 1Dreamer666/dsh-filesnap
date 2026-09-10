@@ -80,10 +80,28 @@ export interface RewindRecord {
 
 /** What a client reads under the `filesnap` projection key. */
 export interface FilesnapProjection {
+  /** Correlated response to a browser preview/confirmation request. */
+  readonly lastReply?: RewindReply | undefined
   /** The points this session can return to, oldest first. */
   readonly points: readonly RewindPoint[]
   /** Where the last rewind out of this session went, when there was one. */
   readonly lastRewind?: RewindRecord | undefined
+}
+
+/** A plan computed from the target snapshot and the current workspace. */
+export interface RewindPreview {
+  readonly token: string
+  readonly point: string
+  readonly turn: number
+  readonly changes: readonly { readonly path: string; readonly action: 'write' | 'delete' }[]
+}
+
+/** Commands use the projection to return results, not just RPC admission. */
+export interface RewindReply {
+  readonly requestId: string
+  readonly error?: string | undefined
+  readonly preview?: RewindPreview | undefined
+  readonly child?: string | undefined
 }
 
 declare module '@deepseek-ai/dsh-session-projection/types' {

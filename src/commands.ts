@@ -17,10 +17,11 @@
 import type { CommandRuntime, CommandInvocation, CommandResult } from '@deepseek-ai/dsh-commands'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { FilesnapRewind, RewindDestination } from './service.ts'
+import type { RewindPreview } from './wire.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal } from './types.ts'
 
 /** What `/rewind` accepts, echoed back on a usage error. */
-const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>] [--into <session id>] | /rewind status'
+const REWIND_USAGE = 'Usage: /rewind [<turn>|<point id>] [--confirm <token>] [--into <session id>] | /rewind status'
   + ' — with no argument, lists the points this session can return to.'
 
 /** One parsed `/rewind` invocation. */
@@ -30,7 +31,7 @@ export type RewindCommand
     /** Ask the engine what it holds and what it does not protect. */
     | { readonly kind: 'status' }
     /** Rewind, forking the conversation here or filing into a caller's fork. */
-    | { readonly kind: 'rewind'; readonly selector: string; readonly into?: string }
+    | { readonly kind: 'rewind'; readonly selector: string; readonly into?: string; readonly confirm?: string; readonly request?: string }
     /** The words do not form a `/rewind`. */
     | { readonly kind: 'usage' }
 
@@ -54,11 +55,16 @@ export function parseRewind(rawInput: string): RewindCommand {
   // Never ambiguous with a point id: those are `<session>.t<n>`.
   if (selector === 'status') return rest.length === 0 ? { kind: 'status' } : { kind: 'usage' }
   if (selector.startsWith('--')) return { kind: 'usage' }
-  if (rest.length === 0) return { kind: 'rewind', selector }
-  if (rest.length !== 2 || rest[0] !== '--into') return { kind: 'usage' }
-  const into = rest[1]
-  if (into === undefined || into === '') return { kind: 'usage' }
-  return { kind: 'rewind', selector, into }
+  const options: { into?: string; confirm?: string; request?: string } = {}
+  for (let i = 0; i < rest.length; i += 2) {
+    const flag = rest[i]
+    const value = rest[i + 1]
+    if (value === undefined || !/^[\w.-]+$/u.test(value)) return { kind: 'usage' }
+    const key = flag === '--into' ? 'into' : flag === '--confirm' ? 'confirm' : flag === '--request' ? 'request' : undefined
+    if (key === undefined || options[key] !== undefined) return { kind: 'usage' }
+    options[key] = value
+  }
+  return { kind: 'rewind', selector, ...options }
 }
 
 /**
@@ -111,7 +117,7 @@ function listResult(points: readonly RewindPoint[]): CommandResult {
       '  turn  when                 opened by',
       ...rows,
       '',
-      'Rewind with /rewind <turn>. The conversation forks at that point and the files go back with it.',
+      'Preview with /rewind <turn>, then confirm with the returned token. Confirmation forks the conversation and restores files.',
     ].join('\n'),
   }
 }
@@ -247,11 +253,37 @@ async function runRewind(service: FilesnapRewind, invocation: CommandInvocation)
     const status = await service.status(invocation.agent, invocation.signal)
     return status.ok ? statusResult(status.value) : refusalResult(status.refusal)
   }
-  const destination: RewindDestination = command.into === undefined
-    ? { kind: 'fork' }
-    : { kind: 'into', session: SessionId(command.into) }
-  const outcome = await service.rewind(invocation.agent, command.selector, destination, invocation.signal)
-  return outcome.ok ? rewindResult(outcome.value) : refusalResult(outcome.refusal)
+  const reply = (result: CommandResult, data: { preview?: RewindPreview; child?: string } = {}): CommandResult => {
+    if (command.request !== undefined) invocation.agent.session.append('filesnap/reply', {
+      requestId: command.request, ...data,
+      ...result.kind === 'error' ? { error: result.text } : {},
+    })
+    return result
+  }
+  try {
+    if (command.confirm === undefined) {
+      if (command.into !== undefined) return reply({ kind: 'error', text: 'Preview first with /rewind <turn>, then use its --confirm token.' })
+      const preview = await service.preview(invocation.agent, command.selector, invocation.signal)
+      if (!preview.ok) return reply(refusalResult(preview.refusal))
+      const { value } = preview
+      return reply({ kind: 'success', text: [
+        `Rewind preview — before turn ${value.turn}.`,
+        'The original conversation will be kept; continuing creates a branch.',
+        ...value.changes.map(change => `  ${change.action === 'write' ? 'WRITE / RESTORE' : 'DELETE'}\t${JSON.stringify(change.path)}`),
+        ...(value.changes.length === 0 ? ['No tracked file changes.'] : []),
+        'Workspace files have not changed. A recovery checkpoint was saved.',
+        `Confirm within 5 minutes: /rewind ${value.point} --confirm ${value.token}`,
+        'To cancel, do not run the confirmation command. If files change, preview again.',
+      ].join('\n') }, { preview: value })
+    }
+    const destination: RewindDestination = command.into === undefined
+      ? { kind: 'fork' }
+      : { kind: 'into', session: SessionId(command.into) }
+    const outcome = await service.rewind(invocation.agent, command.selector, destination, invocation.signal, command.confirm)
+    return outcome.ok ? reply(rewindResult(outcome.value), { child: outcome.value.child }) : reply(refusalResult(outcome.refusal))
+  } catch (error) {
+    return reply({ kind: 'error', text: String(error) })
+  }
 }
 
 /**
@@ -286,7 +318,7 @@ export function registerCommands(commands: CommandRuntime, service: FilesnapRewi
   commands.register({
     name: 'rewind',
     description: 'put the workspace and the conversation back to the start of an earlier turn',
-    input: { hint: '[<turn>|<point id>] [--into <session id>] | status' },
+    input: { hint: '[<turn>|<point id>] [--confirm <token>] | status' },
     handler: invocation => runRewind(service, invocation),
   })
   commands.register({

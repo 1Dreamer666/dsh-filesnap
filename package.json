@@ -122,7 +122,7 @@
     "url": "https://github.com/extracurricular-ai/dsh-filesnap/issues"
   },
   "dependencies": {
-    "filesnap": "^0.4.0",
+    "filesnap": "^0.5.0",
     "zod": "^4.4.3"
   },
   "dsh": {

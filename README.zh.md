@@ -15,6 +15,8 @@
 对话和已跟踪文件一起恢复，原对话完整保留。选错了回退点，再用 `/redo` 撤销。
 带消息旁回退按钮和会话级 redo/status 控件，无需 Git 仓库。
 
+**开发版新增：回退前文件清单与确认。** 点击回退按钮先查看将写回、恢复或删除的文件，确认后才执行；取消不创建分支、不改工作区文件。`/rewind <turn>` 同样先预览。此改动尚未发布，需 FileSnap 0.5.0+。[操作说明与边界](docs/rewind-preview.zh.md)。
+
 ![dsh-filesnap：对话与工作区一起回退](assets/social-preview-whale-girl.jpg)
 
 [观看完整中文演示 · 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/) ·
@@ -106,7 +108,7 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 
 ![输入框里的 /rewind 命令及其参数](assets/shot-2-rewind-command.png)
 
-**3. 选一轮。** 对话和文件一起恢复到选定状态。
+**3. 选一轮并确认。** 开发版先显示文件变更清单；确认后，对话和文件一起恢复到选定状态。下图为旧版执行结果。
 按钮会打开可以继续操作的对话，原对话仍完整保留。
 
 ![两次回退的结果：写入和删除的文件数，以及各自继续的会话](assets/shot-3-rewound.png)
@@ -143,7 +145,8 @@ $ dsh --profile web --dump-config | grep -A 1 filesnap
 | 命令 | 结果 |
 |---|---|
 | `/rewind` | 列出每轮开始前捕获的工作区状态。 |
-| `/rewind <turn>` | 将对话和已跟踪文件恢复到指定轮次之前。 |
+| `/rewind <turn>` | 开发版：预览回退到指定轮次之前将变更的文件。 |
+| `/rewind <turn> --confirm <token>` | 开发版：使用预览给出的令牌确认恢复。 |
 | `/redo` | 撤销落在当前会话中的回退。 |
 | `/rewind status` | 报告存储内容和当前未受保护的文件。 |
 

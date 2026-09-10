@@ -17,9 +17,10 @@
  * What it does own is the **order of a rewind in the web**, which differs from
  * the headless one on purpose:
  *
+ *   0. Preview the file plan and wait for the user to confirm.
  *   1. `sessions.fork(atSeq)` — the deployment's own fork, which composes the
  *      child's preset and attaches it to the workspace.
- *   2. `/rewind <point> --into <child>` — the host puts the files back and
+ *   2. `/rewind <point> --into <child> --confirm <token>` — the host puts the files back and
  *      files the undo record in that fork.
  *   3. `sessions.open(child)` — the user lands where the files landed.
  *
@@ -55,6 +56,7 @@ import type { RewindActionResult, RewindActions, RewindHeaderActions } from './a
 import { RewindAction } from './RewindAction.tsx'
 import { RewindHeader } from './RewindHeader.tsx'
 import { en, zh, type RewindKey } from './locales.ts'
+import { requestReply } from './request.ts'
 
 export { RewindAction } from './RewindAction.tsx'
 export { RewindHeader } from './RewindHeader.tsx'
@@ -105,6 +107,15 @@ export function apply(ctx: ClientContext): void {
     return { ok: true }
   }
 
+  const rewindCommand = async (sessionId: SessionId, line: string): Promise<RewindActionResult> => {
+    const session = sessions.binding(sessionId)?.session
+    if (session === undefined) return { ok: false, error: 'The session is no longer open.' }
+    const requestId = crypto.randomUUID()
+    const reply = await requestReply(session.projections.faceOf('filesnap'), requestId,
+      () => command(sessionId, `${line} --request ${requestId}`))
+    return reply.error === undefined ? { ok: true, preview: reply.preview } : { ok: false, error: reply.error }
+  }
+
   ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
     name: 'conversation.chat.assistant-actions',
     id: 'filesnap',
@@ -113,7 +124,8 @@ export function apply(ctx: ClientContext): void {
     order: 30,
     locale: NS,
     inject: (sessionId): RewindActions => ({
-      onRewind: async (point: RewindPoint): Promise<RewindActionResult> => {
+      onPreview: point => rewindCommand(sessionId, `/rewind ${point.point}`),
+      onRewind: async (point: RewindPoint, token: string): Promise<RewindActionResult> => {
         // An omitted `atSeq` does not mean "cut at the beginning" — the host
         // reads it as "the last completed turn", which would fork the newest
         // state and then restore old files into it. A point with no anchor
@@ -131,11 +143,8 @@ export function apply(ctx: ClientContext): void {
         } catch (error: unknown) {
           return { ok: false, error: String(error) }
         }
-        const done = await command(sessionId, `/rewind ${point.point} --into ${child}`)
-        // Opened even when the files half failed: the fork exists either way,
-        // and leaving the user in the parent with a stray child is worse than
-        // landing them in it with the failure on screen.
-        sessions.open(child)
+        const done = await rewindCommand(sessionId, `/rewind ${point.point} --into ${child} --confirm ${token}`)
+        if (done.ok) sessions.open(child)
         return done
       },
     }),
