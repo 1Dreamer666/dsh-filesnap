@@ -14,7 +14,7 @@ The tracked set combines known files, observed paths and bounded recent scanning
 
 ## Native turns and snapshot references
 
-No custom session events or separate operation journal are written. Native `turn/start`, messages, `parentSession` and `inheritedEventCount` identify which session owns a turn. Those identities join to the engine's snapshot index. Forks retain ancestor point ids, while their own new turns use the child id, preventing collisions between equally numbered turns.
+No custom session events are written. Necessary interrupted-restore state and redo references live outside conversation artifacts; see [recovery](recovery.md). Native `turn/start`, messages, `parentSession` and `inheritedEventCount` identify which session owns a turn. Those identities join to the engine's snapshot index. Forks retain ancestor point ids, while their own new turns use the child id, preventing collisions between equally numbered turns.
 
 Cold ancestors are read through `sessionPersistence.inspect`. Deleting ancestor conversations or snapshots can make inherited targets unavailable, so retain them. Captures after restart consult the engine index instead of replacing an existing turn's original state.
 
@@ -25,16 +25,16 @@ The `filesnap` projection folds only native structural anchors. Snapshot availab
 1. Resolve a point and prepare the file list, saving a rescue checkpoint in the engine store.
 2. Obtain user confirmation with a single-use token bound to the session and point, expiring after five minutes.
 3. The browser invokes DSH's `sessions.fork`, preserving deployment preset/workspace composition.
-4. The host rechecks files and ignore rules, restores the point and files undo data under the child.
+4. The host rechecks files and ignore rules, restores the point and durably records a named rescue and restores the point. Completion and child redo references commit together.
 5. Open the child and refill the full original prompt only in an empty composer. Partial failures remain explicitly visible in the dialog.
 
 Cancel creates no branch and restores no workspace files. Validation is not a filesystem lock; external edits may race the final write. A refused restore can leave the already-created child in the session list. Headless commands fork through the service and return a child id.
 
 ## Independent UI and transport
 
-Public slots provide `conversation.chat.assistant-actions`, `conversation.session.header.actions` and `settings.section`. FileSnap Settings hosts the versioned migration entry.
+Public slots provide `conversation.chat.assistant-actions`, `conversation.session.header.actions` and `settings.section`. FileSnap Settings hosts interrupted recovery and the versioned migration entry.
 
-`ctx.connection.rpc.handle('/filesnap', …)` uses the browser Connection RPC with the host's Host/Origin fence and authentication. Requests are schema-validated and operations target an already-open agent. Buttons never invoke `session.command`, so they produce no `command/run` or `command/done` cards. Manually typed commands retain DSH's standard command path.
+`ctx.connection.rpc.handle('/filesnap', …)` uses the browser Connection RPC with the host's Host/Origin fence and authentication. Requests are schema-validated and ordinary rewind operations target an already-open agent; interrupted recovery can resolve cold sessions from its independent record. Buttons never invoke `session.command`, so they produce no `command/run` or `command/done` cards. Manually typed commands retain DSH's standard command path.
 
 The snapshot panel shows records, shared content, session snapshot counts and unprotected paths. Cleanup invokes only `gc`, preserving referenced snapshots and undo data without automatically deleting sessions.
 

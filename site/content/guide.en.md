@@ -1,6 +1,6 @@
 # Quick start
 
-This guide covers **dsh-filesnap 0.3.2**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
+This guide covers **dsh-filesnap 0.4.0**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
 
 ## Install
 
@@ -23,6 +23,10 @@ After a successful redo with no remaining undo records, the old branch is automa
 Click the snapshot status icon in the session header. The independent panel separates workspace records from shared file content and lists snapshot counts per session. Cleanup explains its scope and requires confirmation. It collects unreferenced data while retaining snapshots and redo recovery data.
 
 Buttons do not write results into the conversation. Manually typing `/rewind status` still uses DSH's standard command-result presentation.
+
+## Interrupted restores
+
+Open **Settings → FileSnap → Interrupted restores** to preview and continue or roll back unfinished new rewinds and redo. Conflicting later edits block overwriting. Recovery state stays outside conversation history. [Workflow and limits](../../docs/recovery.md).
 
 ## Migrate older data
 

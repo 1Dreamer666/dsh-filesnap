@@ -31,7 +31,8 @@ import { en, zh, type RewindKey } from './locales.ts'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import type { UiReply } from '../wire.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { MigrationPanel, type MigrationActions } from './MigrationPanel.tsx'
+import { type MigrationActions } from './MigrationPanel.tsx'
+import { FileSnapSettings, type RecoveryActions } from './RecoveryPanel.tsx'
 import { pointReader } from './points.ts'
 import { refillPrompt } from './refill.ts'
 
@@ -93,10 +94,16 @@ export function apply(ctx: ClientContext): void {
     scan: task => maintenance('migration-scan', { task }),
     migrate: token => maintenance('migration-apply', { token }),
   }
+  const recoveryActions: RecoveryActions = {
+    listRecovery: () => maintenance('recovery-list', {}),
+    previewRecovery: (id, mode) => maintenance('recovery-preview', { id, mode }),
+    applyRecovery: token => maintenance('recovery-apply', { token }),
+    openSession: id => sessions.open(id as SessionId),
+  }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'filesnap', order: 60, label: 'FileSnap', locale: NS,
-    inject: () => migrationActions,
-  }, MigrationPanel))
+    inject: () => ({ ...migrationActions, ...recoveryActions }),
+  }, FileSnapSettings))
 
   const actions = (sessionId: SessionId): RewindActions => ({
     usePoints: reader(sessionId),

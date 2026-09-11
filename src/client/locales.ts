@@ -7,6 +7,23 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  "recoveryTitle": "中断恢复",
+  "recoveryIntro": "查看未完成的文件还原，选择继续或回到操作前。恢复记录独立保存，不进入对话历史。",
+  "recoveryWorking": "正在检查或还原文件…",
+  "recoveryEmpty": "没有未完成的还原。",
+  "recoveryRewind": "中断的回退",
+  "recoveryRedo": "中断的撤销回退",
+  "recoveryResume": "预览继续还原",
+  "recoveryRollback": "预览回滚到操作前",
+  "recoveryConfirmIntro": "确认后按以下清单还原文件。请先停止共用此目录的其他程序写入。",
+  "recoveryWrite": "还原文件",
+  "recoveryDelete": "删除文件",
+  "recoveryNoChanges": "文件已到达目标状态；确认后完成恢复记录。",
+  "recoveryConflicts": "这些文件在中断后又有修改。请先保留并处理这些修改，再刷新预览。为避免覆盖，当前无法确认。",
+  "recoveryConfirm": "确认恢复",
+  "recoveryDone": "恢复完成。",
+  "recoveryOpen": "打开对应对话",
+
   'migrationAutoRunning': '正在自动迁移旧数据…',
   'migrationAutoDone': '本次启动的自动迁移已完成。跳过或失败的数据可手动扫描重试。',
   'migrationAutoOff': '自动迁移未运行。',
@@ -92,6 +109,23 @@ export type RewindKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  "recoveryTitle": "Interrupted restores",
+  "recoveryIntro": "Inspect unfinished file restores, then continue or return to the state before the operation. Recovery records are stored outside conversation history.",
+  "recoveryWorking": "Checking or restoring files…",
+  "recoveryEmpty": "No unfinished restores.",
+  "recoveryRewind": "Interrupted rewind",
+  "recoveryRedo": "Interrupted redo",
+  "recoveryResume": "Preview continuing restore",
+  "recoveryRollback": "Preview rollback",
+  "recoveryConfirmIntro": "Confirmation restores the files listed below. Stop other programs writing to this directory first.",
+  "recoveryWrite": "Restore file",
+  "recoveryDelete": "Delete file",
+  "recoveryNoChanges": "Files already match the destination; confirm to finalize recovery.",
+  "recoveryConflicts": "These files changed after the interruption. Preserve and resolve those edits, then refresh the preview. Confirmation is disabled to avoid overwriting them.",
+  "recoveryConfirm": "Confirm recovery",
+  "recoveryDone": "Recovery completed.",
+  "recoveryOpen": "Open conversation",
+
   'migrationAutoRunning': 'Migrating legacy data automatically…',
   'migrationAutoDone': 'Startup migrations finished. Scan to retry skipped or failed data.',
   'migrationAutoOff': 'Automatic migration has not run.',

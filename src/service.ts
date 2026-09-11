@@ -1,24 +1,13 @@
-/**
- * The two halves of a rewind, sequenced.
- *
- * filesnap has no `rewind` command and no hook to call back into a host
- * (filesnap D27). The engine puts files back; it has no conversation and no
- * opinion about one, and a command that promised the combined operation would
- * deliver half of it. *Rewind* is the user-facing word for what a plugin does,
- * and this is the layer that holds both halves — so the ordering, the failure
- * modes and the result returned to the caller all live here.
- *
- * The order is fixed and the reason is `undo_for`. A restore files its undo
- * record in the session named by `--undo-for`, and for a forking host that is
- * the session the user ends up standing in (filesnap D26). The fork therefore
- * happens first: the destination has to exist before the restore can name it,
- * or the redo is filed somewhere the user cannot reach.
- *
- * @module
+/** Host sequencing for native conversation forks and file restoration.
+ * New operations persist named rescue targets before applying files. Recovery
+ * state and redo references live outside conversation artifacts; legacy engine
+ * undo records remain readable for rewinds created before this workflow.
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
+import { realpathSync } from 'node:fs'
+import { RecoveryManager } from './recovery.ts'
 import type { RewindPreview, RedoPreview, CleanupPreview, CleanupOutcome } from './wire.ts'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
@@ -163,13 +152,14 @@ export class FilesnapRewind extends Service {
 
   /** Validated deployment configuration. */
   private readonly config: FilesnapConfig
+  readonly recovery: RecoveryManager
 
   /** Per-session state, dropped with the session it belongs to. */
   private readonly tracked = new WeakMap<Session, TrackState>()
   private readonly previews = new WeakMap<Session, {
     preview: RewindPreview; fingerprint: string; expires: number
   }>()
-  private readonly redoTokens = new WeakMap<Session, { token: string; fingerprint: string; turn: number; expires: number }>()
+  private readonly redoTokens = new WeakMap<Session, { token: string; fingerprint: string; turn: number; expires: number; managedTarget?: string }>()
   private readonly cleanupTokens = new WeakMap<Session, { token: string; expires: number }>()
 
   /** The invoker, built once the executable has been resolved. */
@@ -178,6 +168,7 @@ export class FilesnapRewind extends Service {
   constructor(ctx: Context, config: FilesnapConfig) {
     super(ctx, 'filesnap')
     this.config = config
+    this.recovery = new RecoveryManager(config.dataDir)
 
     // **Registered here, on the service's own fiber.** An earlier version put
     // these on a `ctx.inject(['filesnap'], …)` child so they could not run
@@ -302,6 +293,7 @@ export class FilesnapRewind extends Service {
       return
     }
     if (agent === undefined) return
+    if (agent.session.header.cwd !== undefined) await this.recovery.assertReady(agent.session.header.cwd)
     const fs = this.ctx.get('fs')
     if (fs === undefined) return
     await this.declare(agent, currentTurn(agent.session), [fs.processPath(target)])
@@ -425,6 +417,7 @@ export class FilesnapRewind extends Service {
    * @param signal - the turn's cancellation signal.
    */
   async capture(agent: Agent, turn: number, signal?: AbortSignal): Promise<void> {
+    if (agent.session.header.cwd !== undefined) await this.recovery.assertReady(agent.session.header.cwd)
     const state = this.stateFor(agent.session)
     const pending = state.capturing.get(turn)
     if (pending !== undefined) return pending
@@ -677,6 +670,7 @@ export class FilesnapRewind extends Service {
     if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
     const cli = await this.invoker()
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
+    if ((await this.recovery.list()).length > 0) return refuse({ kind: 'engine', message: 'Resolve interrupted restores in FileSnap settings before cleaning snapshots.' })
     const run = await cli.run(['gc'], state.binding.cwd, signal)
     if (run.exit !== 'ok') return engineRefusal(run, 'Could not collect unreferenced snapshot data')
     const done = lastEvent(run, 'gc.done')
@@ -734,13 +728,26 @@ export class FilesnapRewind extends Service {
    * @param signal - caller cancellation.
    * @returns what the rewind did, or why it did not happen.
    */
-  async rewind(
+  async rewind(agent: Agent, selector: string, destination: RewindDestination = { kind: 'fork' }, signal?: AbortSignal, confirmation?: string): Promise<RewindResult<RewindOutcome>> {
+    const cwd = agent.session.header.cwd
+    if (cwd === undefined) return refuse({ kind: 'untracked', why: 'This session has no workspace.' })
+    try {
+      await this.recovery.assertReady(cwd)
+      return await this.recovery.exclusive(cwd, async () => {
+        this.assertWorkspaceIdle(cwd)
+        return this.rewindLocked(agent, selector, destination, signal, confirmation)
+      })
+    } catch (error) { return refuse({ kind: 'engine', message: String(error) }) }
+  }
+
+  private async rewindLocked(
     agent: Agent,
     selector: string,
     destination: RewindDestination = { kind: 'fork' },
     signal?: AbortSignal,
     confirmation?: string,
   ): Promise<RewindResult<RewindOutcome>> {
+    let expected: string | undefined
     if (confirmation !== undefined) {
       const saved = this.previews.get(agent.session)
       this.previews.delete(agent.session)
@@ -750,6 +757,7 @@ export class FilesnapRewind extends Service {
       }
       const fresh = await this.preparePreview(agent, selector, signal)
       if (!fresh.ok) return fresh
+      expected = JSON.stringify((JSON.parse(fresh.value.fingerprint) as unknown[]).slice(1))
       if (fresh.value.fingerprint !== saved.fingerprint) {
         return refuse({ kind: 'engine', message: 'The workspace or ignore rules changed after preview. Preview the rewind again before confirming.' })
       }
@@ -794,14 +802,9 @@ export class FilesnapRewind extends Service {
     const cli = await this.invoker()
     /* v8 ignore next -- points() already refused an unavailable command */
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
-    const run = await cli.run(
-      [
-        'restore', '--session', state.binding.id, '--turn', point.point,
-        '--undo-for', childBinding.id, '--cwd', state.binding.cwd,
-      ],
-      state.binding.cwd,
-      signal,
-    )
+    const run = await this.recovery.begin(cli, realpathSync(state.binding.cwd), {
+      kind: 'rewind', source: state.binding.id, destination: childBinding.id, target: point.point,
+    }, signal, expected)
     // `partial` is a completed restore that could not write every file, and its
     // terminal event still carries the counts and the point it can be reversed
     // to. Treating it as a failure would discard the only record of what landed.
@@ -854,6 +857,14 @@ export class FilesnapRewind extends Service {
     if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
     const cli = await this.invoker()
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
+    await this.recovery.assertReady(state.binding.cwd)
+    const managed = await this.recovery.redoTarget(state.binding.cwd, state.binding.id)
+    if (managed !== undefined && managed !== null) {
+      const preview = await this.managedRedoPreview(cli, state.binding.cwd, state.binding.id, managed.turn, signal)
+      const token = randomUUID()
+      this.redoTokens.set(agent.session, { token, fingerprint: preview.fingerprint, managedTarget: managed.turn, turn: currentTurn(agent.session), expires: Date.now() + 300_000 })
+      return { ok: true, value: { token, changes: preview.changes, returnedTo: managed.parent } }
+    }
     const run = await cli.run(['undo', '--preview', '--session', state.binding.id, '--cwd', state.binding.cwd], state.binding.cwd, signal)
     if (hasNoRestore(run, state.binding.id)) return refuse({ kind: 'no-restore' })
     if (run.exit !== 'ok') {
@@ -878,7 +889,58 @@ export class FilesnapRewind extends Service {
     return { ok: true, value: { token, changes, returnedTo: agent.session.header.parentSession } }
   }
 
+  private assertWorkspaceIdle(cwd: string): void {
+    const canonical = realpathSync(cwd)
+    for (const agent of this.ctx.agents.list?.() ?? []) {
+      if (agent.status !== 'running' || agent.session.header.cwd === undefined) continue
+      if (realpathSync(agent.session.header.cwd) === canonical) throw new Error('Stop all agents using this workspace before restoring files.')
+    }
+  }
+
+  async recoveryPreview(id: string, mode: 'apply' | 'rollback', signal?: AbortSignal) {
+    const cli = await this.invoker()
+    if ('unavailable' in cli) throw new Error(cli.unavailable)
+    const item = (await this.recovery.list()).find(item => item.id === id)
+    if (item !== undefined) this.assertWorkspaceIdle(item.cwd)
+    return this.recovery.preview(cli, id, mode, signal)
+  }
+
+  async recover(token: string, signal?: AbortSignal) {
+    const cli = await this.invoker()
+    if ('unavailable' in cli) throw new Error(cli.unavailable)
+    const item = await this.recovery.recover(cli, token, cwd => this.assertWorkspaceIdle(cwd), signal)
+    const destination = item.phase === 'apply' ? item.destination : item.source
+    const inactive = item.phase === 'apply' ? item.source : item.destination
+    this.retitle(this.ctx.get('sessions')?.get(brandSessionId(destination)), activate)
+    this.retitle(this.ctx.get('sessions')?.get(brandSessionId(inactive)), mark)
+    return { ...item, openSession: destination }
+  }
+
+  private async managedRedoPreview(cli: FilesnapCli, cwd: string, session: string, target: string, signal?: AbortSignal) {
+    const run = await cli.run(['prepare', '--session', session, '--turn', `preview-${randomUUID()}`, '--target', target, '--cwd', cwd], cwd, signal)
+    const done = lastEvent(run, 'prepare.done')
+    const changes = eventsOfType(run, 'prepare.change').map(row => ({ path: row['path'], action: row['action'] }))
+    if (run.exit !== 'ok' || run.refused !== 0 || typeof done?.['manifest'] !== 'string' || typeof done['ignoreRules'] !== 'string'
+      || changes.some(row => typeof row.path !== 'string' || (row.action !== 'write' && row.action !== 'delete'))
+      || done['writes'] !== changes.filter(row => row.action === 'write').length || done['deletes'] !== changes.filter(row => row.action === 'delete').length) {
+      throw new Error(run.stderr || 'Incomplete redo preview.')
+    }
+    return { changes: changes as RedoPreview['changes'], fingerprint: JSON.stringify([done['manifest'], done['ignoreRules'], changes]) }
+  }
+
   async redo(agent: Agent, signal?: AbortSignal, token?: string): Promise<RewindResult<RedoOutcome>> {
+    const cwd = agent.session.header.cwd
+    if (cwd === undefined) return refuse({ kind: 'untracked', why: 'This session has no workspace.' })
+    try {
+      await this.recovery.assertReady(cwd)
+      return await this.recovery.exclusive(cwd, async () => {
+        this.assertWorkspaceIdle(cwd)
+        return this.redoLocked(agent, signal, token)
+      })
+    } catch (error) { return refuse({ kind: 'engine', message: String(error) }) }
+  }
+
+  private async redoLocked(agent: Agent, signal?: AbortSignal, token?: string): Promise<RewindResult<RedoOutcome>> {
     const saved = this.redoTokens.get(agent.session)
     this.redoTokens.delete(agent.session)
     if (saved === undefined || saved.token !== token || saved.expires < Date.now() || saved.turn !== currentTurn(agent.session)) {
@@ -890,11 +952,18 @@ export class FilesnapRewind extends Service {
     const cli = await this.invoker()
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
 
-    const run = await cli.run(
-      ['undo', '--session', state.binding.id, '--cwd', state.binding.cwd, '--expect', saved.fingerprint],
-      state.binding.cwd,
-      signal,
-    )
+    let run: FilesnapRun
+    if (saved.managedTarget !== undefined) {
+      const managed = await this.recovery.redoTarget(state.binding.cwd, state.binding.id)
+      if (!managed || managed.turn !== saved.managedTarget) return refuse({ kind: 'no-restore' })
+      const fresh = await this.managedRedoPreview(cli, state.binding.cwd, state.binding.id, managed.turn, signal)
+      if (fresh.fingerprint !== saved.fingerprint) return refuse({ kind: 'engine', message: 'The redo preview is stale. Preview again.' })
+      run = await this.recovery.begin(cli, realpathSync(state.binding.cwd), {
+        kind: 'redo', source: state.binding.id, destination: managed.parent, target: managed.turn,
+      }, signal, saved.fingerprint)
+    } else {
+      run = await cli.run(['undo', '--session', state.binding.id, '--cwd', state.binding.cwd, '--expect', saved.fingerprint], state.binding.cwd, signal)
+    }
     // `partial` here also covers a clean undo that found paths changed since
     // the rewind: they are reported, not refused, because the safety checkpoint
     // captured them before this wrote over them.
@@ -927,13 +996,14 @@ export class FilesnapRewind extends Service {
       // record has been consumed; never infer this from its title or ancestry.
       try {
         const remaining = await cli.run(['undo', '--preview', '--session', state.binding.id, '--cwd', state.binding.cwd], state.binding.cwd, signal)
-        if (hasNoRestore(remaining, state.binding.id)) {
+        const managed = await this.recovery.redoTarget(state.binding.cwd, state.binding.id)
+        if ((managed === null || managed === undefined) && hasNoRestore(remaining, state.binding.id)) {
           const registry = this.ctx.get('workspaceRegistry') as { archiveSession(id: SessionId): Promise<void> } | undefined
           if (typeof registry?.archiveSession === 'function') {
             await registry.archiveSession(agent.session.id)
             archived = true
           } else archiveError = 'This host does not provide session archiving.'
-        } else if (remaining.exit !== 'ok') archiveError = 'Could not verify that the branch has no remaining undo records; it was kept visible.'
+        } else if ((managed === null || managed === undefined) && remaining.exit !== 'ok') archiveError = 'Could not verify that the branch has no remaining undo records; it was kept visible.'
       } catch (error) { archiveError = String(error) }
     }
 

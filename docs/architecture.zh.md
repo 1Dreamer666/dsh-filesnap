@@ -14,7 +14,7 @@ FileSnap 引擎负责有界扫描、内容寻址去重、文件还原、undo 救
 
 ## 原生轮次与快照索引
 
-本版不再写任何自定义会话事件，也不保存操作流水。通过 DSH 的 `turn/start`、原生消息、`parentSession` 和 `inheritedEventCount` 判断某个轮次由哪个会话创建，再与引擎的快照索引关联。进入分支时保留祖先的 point id；分支自己的新轮次使用分支 id，避免相同轮次编号串线。
+本版不写任何自定义会话事件。必要的中断恢复状态和 redo 引用独立存放，不属于聊天操作流水。通过 DSH 的 `turn/start`、原生消息、`parentSession` 和 `inheritedEventCount` 判断某个轮次由哪个会话创建，再与引擎的快照索引关联。进入分支时保留祖先的 point id；分支自己的新轮次使用分支 id，避免相同轮次编号串线。
 
 冷祖先通过宿主的只读 `sessionPersistence.inspect` 读取。祖先会话或快照被删除后，继承恢复点可能无法解析，因此应保留它们。重启后的捕获先查引擎索引，避免重新捕获已存在轮次而覆盖旧状态。
 
@@ -25,16 +25,16 @@ FileSnap 引擎负责有界扫描、内容寻址去重、文件还原、undo 救
 1. 查询可恢复轮次，准备文件变更清单，同时在引擎存储保存救援检查点。
 2. 用户确认；令牌限定会话和恢复点，五分钟过期，单次使用。
 3. 浏览器走 DSH 自己的 `sessions.fork`，继承部署的 preset 和 workspace 组合。
-4. host 再次检查工作区与忽略规则，恢复到指定 point，undo 数据归属于 child。
+4. host 再次检查工作区与忽略规则，恢复到指定 point，先持久化命名救援点及恢复状态，再还原文件；完成状态与 child 的 redo 引用一起提交。
 5. 浏览器打开 child，并在空输入框回填完整原始提示词。部分失败留在浮层中明确展示。
 
 取消不恢复文件、不创建分支。检查不是文件系统锁，外部写入仍可能在最终检查后发生。host 拒绝时浏览器已经创建的 child 可能留在列表。headless 命令由服务自行 fork 并返回 child id。
 
 ## 独立界面与通信
 
-使用 DSH 公开插槽：`conversation.chat.assistant-actions`、`conversation.session.header.actions`、`settings.section`。设置中的 FileSnap 页面提供多版本迁移入口。
+使用 DSH 公开插槽：`conversation.chat.assistant-actions`、`conversation.session.header.actions`、`settings.section`。设置中的 FileSnap 页面提供中断恢复和多版本迁移入口。
 
-`ctx.connection.rpc.handle('/filesnap', …)` 与浏览器 Connection RPC 对接，沿用宿主的 Host/Origin 检查和浏览器认证。请求经 schema 验证，操作只作用于已打开的对应 agent。浏览器按钮不调用 `session.command`，因此不产生其 `command/run` 和 `command/done` 卡片。用户手动输入命令仍走宿主标准命令路径。
+`ctx.connection.rpc.handle('/filesnap', …)` 与浏览器 Connection RPC 对接，沿用宿主的 Host/Origin 检查和浏览器认证。请求经 schema 验证，常规回退操作作用于已打开的对应 agent；中断恢复可通过独立记录处理尚未打开的会话。浏览器按钮不调用 `session.command`，因此不产生其 `command/run` 和 `command/done` 卡片。用户手动输入命令仍走宿主标准命令路径。
 
 工作区快照面板独立显示索引占用、共享内容、会话快照数量和未保护路径。清理只调用 `gc`，保留被快照与 undo 引用的数据，不自动删除会话。
 
@@ -49,3 +49,7 @@ FileSnap 引擎负责有界扫描、内容寻址去重、文件还原、undo 救
 `ctx.filesnap` 提供 `points`、`preview`、`rewind`、`redo`、`status`、`previewCleanup`、`cleanup`。结果为 `{ ok: true, value }` 或 `{ ok: false, refusal }`。直接调用 service 的集成方可以自行控制确认流程；命令和浏览器必须传预览令牌。
 
 host 与 client 分开编译，共享普通数据类型 [`src/wire.ts`](../src/wire.ts)。宿主依赖为 optional peer，避免安装第二套 Cordis/DSH。浏览器 bundle 使用宿主构建预设；本版验证基于 DSH 0.1.2-rc.1。
+
+## 中断恢复状态
+
+新回退与 redo 的命名救援点、未完成状态和 redo 栈独立持久化。完成状态与栈更新一并提交；设置面板负责预览继续或回滚，文件冲突时拒绝覆盖。引擎仍使用已发布接口。[恢复流程及边界](recovery.zh.md)。

@@ -21,6 +21,6 @@ The first command only previews. Cancel by omitting the second command. Tokens b
 
 Preview saves a recovery checkpoint in the snapshot store, without restoring workspace files or creating a conversation branch. Confirmation captures and compares the current state again. Changed files, turn or ignore rules require a fresh preview. This does not lock external editors or other processes; a concurrency window remains between the final check and writes.
 
-After browser confirmation, the host creates a branch before restoring files. If the host then refuses restoration, the dialog shows the error and keeps the original conversation open; the already-created child can remain in the session list. Partial file failures retain the existing recovery result and `/redo` record.
+After browser confirmation, the host creates a branch before restoring files. If the host then refuses restoration, the dialog shows the error and keeps the original conversation open; the already-created child can remain in the session list. Partial file failures retain the rescue and pending state; resolve them in Settings → FileSnap → Interrupted restores before another rewind or redo.
 
 The list shows paths and actions, not line-by-line diffs. It does not add per-file selection, conversation-only mode or a new global shortcut. Preview does not extend snapshot coverage; `/rewind status` explains that coverage.

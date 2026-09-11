@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+- 新增「设置 → FileSnap → 中断恢复」：预览继续或回滚未完成的回退与 redo，确认时重新检查文件，冲突时停止。
+- 修改文件前持久化命名救援点及独立恢复状态；完成状态和 redo 栈一起提交，避免结果丢失后重复消费。必要元数据不写入对话，卸载不影响原生会话读取。
+- 复用已发布的 FileSnap 0.5.1+，本次无需引擎更新。新恢复流程覆盖本版创建的回退及其 redo；旧版回退保留兼容路径。
+- Add an independent interrupted-restore panel, durable host recovery metadata, repeatable rescue targets and conflict-checked confirmation. Block new Agent work in a workspace awaiting recovery.
+- Verify actual host process termination before/after applying files, partial application, interrupted rollback, redo preservation and fresh-process conversation loading.
+
+Limits: local workspace, one DSH process, no concurrent external writes. Changed ignore rules must be restored before recovery preview. This does not promise multi-file atomicity across machine power loss.
+
 ## 0.3.2
 
 - Treat a missing or consumed undo record as a normal empty state in the redo dialog, command menu and headless command. Remove misleading engine-upgrade hints and restore/retry controls for this state; preserve actual engine errors.

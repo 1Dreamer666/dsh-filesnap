@@ -89,7 +89,7 @@ export interface FilesnapCli {
    * @param signal - caller cancellation, folded together with the deadline.
    * @returns what the invocation reported, including a non-`ok` exit.
    */
-  run(argv: readonly string[], cwd: string, signal?: AbortSignal): Promise<FilesnapRun>
+  run(argv: readonly string[], cwd: string, signal?: AbortSignal, stdin?: string): Promise<FilesnapRun>
 }
 
 /** How to reach and bound the command. */
@@ -227,16 +227,16 @@ export function createFilesnapCli(ctx: Context, options: FilesnapCliOptions): Fi
   const prefix = options.dataDir === undefined ? [] : ['--data-dir', options.dataDir]
 
   return {
-    async run(argv, cwd, signal) {
+    async run(argv, cwd, signal, stdin) {
       const deadline = AbortSignal.timeout(options.timeoutMs)
       const bound = signal === undefined ? deadline : AbortSignal.any([signal, deadline])
       const spec: SubprocessSpawnSpec = {
         argv: [options.executable, ...prefix, ...argv],
         cwd,
         stdio: {
-          // Nothing is written to the child: every input is an argument, so
-          // leaving fd 0 open would only give a future bug somewhere to hang.
-          stdin: 'ignore',
+          // A confirmed ignore policy is the only stdin payload; the provider
+          // writes and closes it as one batch. Ordinary commands keep fd 0 closed.
+          stdin: stdin === undefined ? 'ignore' : { data: stdin },
           stdout: { maxBytes: options.maxOutputBytes },
           stderr: { maxBytes: options.maxOutputBytes },
         },

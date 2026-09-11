@@ -455,6 +455,62 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(archiveSession).toHaveBeenCalledTimes(1)
   })
 
+  it('recovers a lost restore result through the service and keeps history free of operation events', async () => {
+    const file = join(workspace.path, 'a.txt'), parent = liveSessionAt(live, 'parent', workspace.path)
+    const agent = agentOn(parent), child = liveSessionAt(live, 'child', workspace.path, 'parent')
+    writeFileSync(file, 'before')
+    await runTurn(parent, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(parent, 2, 'edit', () => service.capture(agent, 2))
+    writeFileSync(file, 'after')
+    const hidden = service as unknown as { invoker(): Promise<import('../src/cli.ts').FilesnapCli> }
+    const cli = await hidden.invoker()
+    let interrupt = true
+    vi.spyOn(hidden, 'invoker').mockResolvedValue({ run: async (...args) => {
+      const result = await cli.run(...args)
+      if (args[0][0] === 'restore' && interrupt) {
+        interrupt = false
+        return { ...result, exit: 'aborted', code: null, events: [], stderr: 'host lost the result' }
+      }
+      return result
+    } })
+    expect((await service.rewind(agent, '2', { kind: 'into', session: child.id })).ok).toBe(false)
+    const pending = (await service.recovery.list())[0]!
+    expect(pending.source).toBe(parent.id)
+    await expect(service.capture(agent, 3)).rejects.toThrow('unfinished')
+    const preview = await service.recoveryPreview(pending.id, 'apply')
+    expect(preview.changes).toEqual([])
+    expect(await service.recover(preview.token)).toMatchObject({ openSession: child.id })
+    expect((await confirmRedo(service, agentOn(child))).ok).toBe(true)
+    expect(readFileSync(file, 'utf8')).toBe('after')
+    expect((await service.previewRedo(agentOn(child)))).toEqual({ ok: false, refusal: { kind: 'no-restore' } })
+    expect(parent.snapshotEvents().some(row => row.type.startsWith('filesnap/'))).toBe(false)
+    expect(child.snapshotEvents().some(row => row.type.startsWith('filesnap/'))).toBe(false)
+  })
+
+  it('keeps legacy engine undo reachable underneath new durable redo records', async () => {
+    const archiveSession = vi.fn(async (_id: string) => {})
+    ctx.provide('workspaceRegistry', { archiveSession })
+    const file = join(workspace.path, 'a.txt'), parent = liveSessionAt(live, 'parent', workspace.path)
+    const agent = agentOn(parent), child = liveSessionAt(live, 'child', workspace.path, 'parent')
+    writeFileSync(file, 'before')
+    await runTurn(parent, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(parent, 2, 'edit', () => service.capture(agent, 2))
+    const available = await service.points(agent)
+    if (!available.ok) throw new Error('missing points')
+    const point = available.value.find(point => point.turn === 2)!
+    const cli = await (service as unknown as { invoker(): Promise<import('../src/cli.ts').FilesnapCli> }).invoker()
+    writeFileSync(file, 'legacy rescue')
+    expect((await cli.run(['restore', '--session', parent.id, '--turn', point.point, '--undo-for', child.id], workspace.path)).exit).toBe('ok')
+    writeFileSync(file, 'new rescue')
+    expect((await service.rewind(agent, '2', { kind: 'into', session: child.id })).ok).toBe(true)
+    expect((await confirmRedo(service, agentOn(child))).ok).toBe(true)
+    expect(readFileSync(file, 'utf8')).toBe('new rescue')
+    expect(archiveSession).not.toHaveBeenCalled()
+    expect((await confirmRedo(service, agentOn(child))).ok).toBe(true)
+    expect(readFileSync(file, 'utf8')).toBe('legacy rescue')
+    expect(archiveSession).toHaveBeenCalledExactlyOnceWith(child.id)
+  })
+
   it('keeps a branch with remaining undo records and preserves redo success if archiving fails', async () => {
     const archiveSession = vi.fn(async (_id: string) => { throw new Error('archive unavailable') })
     ctx.provide('workspaceRegistry', { archiveSession })

@@ -57,11 +57,12 @@ export function nodeSubprocess(): SubprocessStandIn {
       const [program, ...args] = spec.argv
       /* v8 ignore next -- every caller in this plugin passes a program */
       if (program === undefined) throw new TypeError('argv is empty')
-      const child = spawn(program, args, { cwd: spec.cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(program, args, { cwd: spec.cwd, stdio: [typeof spec.stdio.stdin === 'object' ? 'pipe' : 'ignore', 'pipe', 'pipe'] })
+      if (typeof spec.stdio.stdin === 'object') child.stdin?.end(spec.stdio.stdin.data)
       let out = ''
       let err = ''
-      child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString('utf8') })
-      child.stderr.on('data', (chunk: Buffer) => { err += chunk.toString('utf8') })
+      child.stdout?.on('data', (chunk: Buffer) => { out += chunk.toString('utf8') })
+      child.stderr?.on('data', (chunk: Buffer) => { err += chunk.toString('utf8') })
       const done = new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((settle, fail) => {
         child.on('error', fail)
         child.on('close', (exitCode, signal) => void settle({ exitCode, signal }))

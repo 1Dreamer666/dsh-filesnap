@@ -80,6 +80,15 @@ export function registerRpc(ctx: Context): void {
     }
     rpcCtx.connection.rpc.handle('/filesnap', async (endpoint, payload, signal) => {
       try {
+        if (endpoint === 'recovery-list') { z.object({}).strict().parse(payload); return { ok: true, value: await rpcCtx.filesnap.recovery.list() } }
+        if (endpoint === 'recovery-preview') {
+          const input = z.object({ id: z.string().uuid(), mode: z.enum(['apply', 'rollback']) }).strict().parse(payload)
+          return { ok: true, value: await rpcCtx.filesnap.recoveryPreview(input.id, input.mode, signal) }
+        }
+        if (endpoint === 'recovery-apply') {
+          const input = z.object({ token: z.string().uuid() }).strict().parse(payload)
+          return { ok: true, value: await rpcCtx.filesnap.recover(input.token, signal) }
+        }
         if (endpoint === 'migration-auto-status') { z.object({}).strict().parse(payload); return { ok: true, value: migrations().automaticStatus() } }
         if (endpoint === 'migration-list') { z.object({}).strict().parse(payload); return { ok: true, value: migrations().catalogue() } }
         if (endpoint === 'migration-scan') { const input = z.object({ task: z.string() }).strict().parse(payload); return { ok: true, value: await migrations().scan(input.task, signal) } }

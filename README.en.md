@@ -10,13 +10,13 @@
 
 **dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
 
-**0.3.2 handles unavailable redo accurately and automatically archives completed branches after their last undo record is consumed.** Buttons return results over independent RPC without writing operation logs to the conversation.
+**0.4.0 adds an independent recovery panel to preview and continue or roll back interrupted rewinds and redo.** Buttons return results over independent RPC without writing operation logs to the conversation.
 
 ![dsh-filesnap: rewind conversations and workspace files](assets/social-preview-whale-girl.jpg)
 
 [English walkthrough (older version) · 2:29](https://youtu.be/WPEXKesR_EM) · [中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/)
 
-Version 0.3.2 requires FileSnap engine **0.5.1+**. Publish the engine before the plugin. An unavailable preview interface refuses the restore.
+Version 0.4.0 requires FileSnap engine **0.5.1+**. No new engine release is needed for this update. An unavailable preview interface refuses the restore.
 
 ## Install
 
@@ -38,6 +38,10 @@ Restart the profile. No manual loader entry is needed. When upgrading from 0.2.1
 When no undo record is available, including after a completed redo, a normal status message replaces the upgrade error and confirmation controls. Ordinary conversations are never archived simply because they have no undo record. Branches with failed file restores or remaining undo records stay visible. If host archiving is unavailable or fails, the branch is kept and the restore result explains why.
 
 If files, ignore rules or the turn change after preview, preview again. Confirmation tokens expire after five minutes and are single-use. Partial restore failures identify affected paths. [Full workflow and limits](docs/rewind-preview.md).
+
+## Interrupted restores
+
+After a new rewind or redo is interrupted by process exit, timeout or file errors, open **Settings → FileSnap → Interrupted restores**. Preview continuing or rolling back, then confirm the affected files. Necessary state stays outside conversation history, and additional edits detected after interruption block overwriting. [Workflow and limits](docs/recovery.md).
 
 ## Workspace snapshots and cleanup
 

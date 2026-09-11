@@ -161,3 +161,21 @@ export interface AutomaticMigrationStatus {
   readonly reports: readonly MigrationReport[]
   readonly error?: string | undefined
 }
+
+export interface RecoveryItem {
+  readonly id: string
+  readonly cwd: string
+  readonly kind: 'rewind' | 'redo'
+  readonly source: string
+  readonly destination: string
+  readonly createdAt: number
+  readonly phase: 'apply' | 'rollback'
+  readonly changes: RewindPreview['changes']
+}
+export interface RecoveryPreview {
+  readonly token: string
+  readonly id: string
+  readonly mode: 'apply' | 'rollback'
+  readonly changes: RewindPreview['changes']
+  readonly conflicts: readonly string[]
+}

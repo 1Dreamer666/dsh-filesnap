@@ -83,3 +83,5 @@
 .settings { padding: 20px; max-width: 760px; color: inherit; }
 .settings select { display: block; width: 100%; margin-top: 8px; padding: 10px; color: inherit; background: var(--dsw-alias-bg-layer-1, Canvas); border: 1px solid var(--dsw-alias-border-l1, #ddd); border-radius: 6px; }
 .sessions small { flex-basis: 100%; }
+
+.recoveryItem { border: 1px solid var(--dsw-alias-border-l1, #ddd); border-radius: 10px; padding: 16px; margin: 12px 0; }

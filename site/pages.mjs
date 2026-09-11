@@ -6,6 +6,7 @@ export const pageDefinitions=[
  {slug:'deduplication',group:1,en:['Deduplication evidence','Seven reproducible storage experiments with FileSnap 0.4.0 and dsh-rewind-plugin 0.9.1.'],zh:['去重实验与证据','FileSnap 0.4.0 与 dsh-rewind-plugin 0.9.1 的七组可复现存储实验。'],doc:'dedup-comparison'},
  {slug:'architecture',group:2,en:['How it works','Capture boundaries, content-addressed storage and the ordering of conversation and file recovery.'],zh:['工作原理','捕获边界、内容寻址存储，以及对话与文件恢复的执行顺序。'],doc:'architecture'},
  {slug:'ecosystem',group:1,en:['Across coding assistants','The FileSnap design’s Codex origins and standalone engine integrations in DSH and Pi.'],zh:['跨助手应用','FileSnap 的 Codex 设计来源，以及独立引擎在 DSH 与 Pi 中的接入。'],doc:'cross-assistant'},
+ {slug:'recovery',group:2,en:['Interrupted restores','Preview and continue or roll back interrupted rewinds and redo without writing operation logs into conversations.'],zh:['中断恢复','在独立设置面板预览继续或回滚中断的回退和 redo，不向对话写操作日志。'],doc:'recovery'},
  {slug:'migrations',group:2,en:['Data migrations','Scan and migrate legacy conversation data with versioned tasks, confirmation and backups.'],zh:['数据迁移','多版本数据迁移入口：扫描旧会话，确认清单，保留原始备份。'],doc:'migrations'},
  {slug:'roadmap',group:2,en:['Roadmap','Implemented recovery features and planned retention, diffs and workflow improvements.'],zh:['路线图','已实现的恢复能力，以及保留策略、内容 diff 与操作改进计划。'],doc:'roadmap'},
  {slug:'troubleshooting',group:2,en:['Troubleshooting','Resolve installation, profile, session reopening and native-engine issues.'],zh:['排障指南','处理安装、profile、会话读取及原生引擎问题。'],doc:'troubleshooting'}
