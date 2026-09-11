@@ -46,15 +46,23 @@ Click **Show snapshot status** in the session header to open the independent **W
 
 Old sessions and snapshots are not automatically deleted. Automatic retention policies are not implemented. Button results do not append chat cards.
 
-## Upgrading older data
+## Upgrades and automatic migrations
 
-Legacy `↩` titles become `🔴 Inactive ·`. Successful rewind/redo marks the branch to continue in `🟢 Active ·` and the branch being left `🔴 Inactive ·`. These describe branch choice, not Agent run status. Ordinary historical titles are not guessed to be Active.
+**Automatic migration is enabled by default in 0.3.1 (`autoMigrate: true`).** After installing or upgrading, restart the profile. When DSH loads the updated plugin, it automatically scans, backs up and migrates unloaded legacy conversations. Migration does not run in npm postinstall; installing the package without reloading the plugin does not trigger it.
 
-After installing and restarting the profile, the plugin automatically scans, backs up and migrates unloaded legacy conversations. This runs when DSH loads the plugin, not in npm postinstall. **DSH Settings → FileSnap → Data migrations** shows startup results and provides manual scans, confirmation and retries for every versioned task.
+| Migration task | Changes |
+|---|---|
+| Legacy session compatibility | Mark legacy FileSnap custom events as ignorable by the host, fixing the session-opening failures those events caused after uninstalling the plugin. Preserve message content, sequence numbers and fork boundaries. |
+| Branch status title markers | Replace the legacy `↩` title prefix with `🔴 Inactive ·`. Ordinary historical titles are not automatically inferred to be `🟢 Active ·`. |
 
-The first task is **Legacy session compatibility → 0.3.1+**. It marks old `filesnap/*` events as ignorable, preserving message content, sequence numbers and fork boundaries. Each changed artifact gets an original backup beside it. Compatible data is skipped. Loaded sessions are skipped too: close them and scan again; if still loaded, restart DSH and visit Settings before opening those conversations.
+After a successful rewind or redo, the branch to continue in is marked `🟢 Active ·` and the branch being left is marked `🔴 Inactive ·`. These indicate branch choice, independently of whether the Agent is running.
 
-The current task supports DSH JSONL and Zstd logs and leaves other plugins' events unchanged. [Migration and offline recovery](docs/migrations.md).
+- **Back up before changing:** Each modified log gets an original backup beside it. Compatible data is skipped; reloading the plugin does not repeat completed migrations.
+- **Skip conversations in use:** Loaded sessions are left unchanged. Close them and scan again. If still loaded, restart DSH and visit Settings before opening those conversations.
+- **Review results and retry:** Open **DSH Settings → FileSnap → Data migrations** to see this startup's results. Select a task to scan, confirm and retry manually. Future versioned migrations will use this same entry point.
+- **Opt out of automatic migration:** Set the plugin configuration `autoMigrate` to `false` and run migrations manually from Settings.
+
+Current migrations support DSH JSONL and Zstd logs and leave other plugins' events unchanged. [Migration and offline recovery](docs/migrations.md).
 
 ## Commands
 
