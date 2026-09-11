@@ -1,12 +1,6 @@
 /**
  * The rewind control, one per turn, in the assistant message's own icon row.
  *
- * It sits beside copy and branch and reuses that row's chrome, so it reads as
- * part of the message rather than as a panel bolted next to it. That is also
- * why it is a single icon and not a list: the transcript already *is* the list
- * of points, one per bubble, and a popover repeating it was the thing nobody
- * could read.
- *
  * A message with no point renders nothing. Only the assistant message that
  * closed a turn carries one, so the control appears once per turn — under the
  * last bubble of that turn, which is where "undo this" belongs.
@@ -52,6 +46,19 @@ function coverageLine(point: RewindPoint, t: RewindActionProps['t']): string | u
  */
 export function RewindAction({ messageId, onPreview, onRewind, usePoints, useProjection, t }: RewindActionProps) {
   const points = usePoints(useProjection('filesnap'))
+  const point = points.find(candidate => candidate.messageId === messageId)
+  return point === undefined ? null : <RewindControl point={point} onPreview={onPreview} onRewind={onRewind} t={t} />
+}
+
+/** Shared preview/confirmation flow for message buttons and the slash menu. */
+export function RewindControl({ point, onPreview, onRewind, t, autoOpen = false, onClose }: {
+  point: RewindPoint
+  onPreview: RewindActions['onPreview']
+  onRewind: RewindActions['onRewind']
+  t: RewindActionProps['t']
+  autoOpen?: boolean
+  onClose?: () => void
+}) {
   const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'confirming'>('idle')
   const [preview, setPreview] = useState<RewindPreview | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
@@ -60,8 +67,7 @@ export function RewindAction({ messageId, onPreview, onRewind, usePoints, usePro
   const generation = useRef(0)
   const titleId = useId()
   const descriptionId = useId()
-  const point = points.find(candidate => candidate.messageId === messageId)
-  useEffect(() => () => { generation.current++ }, [])
+  useEffect(() => () => { generation.current++; busy.current = false }, [])
 
   const close = () => {
     if (phase === 'confirming') return
@@ -70,6 +76,7 @@ export function RewindAction({ messageId, onPreview, onRewind, usePoints, usePro
     setPhase('idle')
     setPreview(null)
     dialog.current?.close()
+    onClose?.()
   }
 
   const load = async (target: RewindPoint) => {
@@ -102,7 +109,7 @@ export function RewindAction({ messageId, onPreview, onRewind, usePoints, usePro
       const result = await onRewind(target, preview.token)
       if (attempt !== generation.current) return
       setPreview(null) // A token is single-use, including failed confirmations.
-      if (result.ok) dialog.current?.close()
+      if (result.ok) { dialog.current?.close(); onClose?.() }
       else setFailure(result.error ?? t('previewUnavailable'))
     } catch (error) {
       if (attempt === generation.current) { setPreview(null); setFailure(String(error)) }
@@ -111,17 +118,19 @@ export function RewindAction({ messageId, onPreview, onRewind, usePoints, usePro
     }
   }
 
-  if (point === undefined) return null
+  // Menu controls mount once per selection, with a fixed target and callbacks.
+  useEffect(() => { if (autoOpen) void load(point) }, [])
+
   const covered = coverageLine(point, t)
   const label = point.label === undefined ? t('rewindHere') : t('rewindTo', { label: point.label })
   return (
     <>
-      <Tooltip label={covered === undefined ? label : `${label}\n${covered}`} side="bottom" delayMs={500}>
+      {!autoOpen && <Tooltip label={covered === undefined ? label : `${label}\n${covered}`} side="bottom" delayMs={500}>
         <button type="button" className={css.action} disabled={phase === 'loading' || phase === 'confirming'}
           aria-label={label} onClick={() => { void load(point) }}>
           <IconRefreshOutline16 size={14} />
         </button>
-      </Tooltip>
+      </Tooltip>}
       <dialog ref={dialog} className={css.dialog} aria-labelledby={titleId} aria-describedby={descriptionId}
         onCancel={event => { event.preventDefault(); close() }}>
         <h2 id={titleId}>{t('previewTitle', { turn: String(point.turn) })}</h2>

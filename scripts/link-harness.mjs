@@ -65,6 +65,7 @@ const PACKAGES = [
   'packages/client/locale',
   'packages/client/connection',
   'packages/client/ui-settings',
+  'packages/client/ui-commands',
 ]
 
 /** Third-party packages the browser half compiles against, taken from the harness's install. */

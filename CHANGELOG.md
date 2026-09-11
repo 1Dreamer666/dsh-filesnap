@@ -2,6 +2,8 @@
 
 ## 0.3.0
 
+- Bare `/rewind` opens the native searchable turn picker in the web UI, then the file preview and confirmation dialog.
+
 - Preview the complete file impact list and require confirmation before browser or command rewinds. Recheck workspace state and ignore rules before restoring.
 - Move browser actions from chat commands to independent authenticated RPC. No new `filesnap/*` session events, operation journals or command-result cards from buttons.
 - Resolve snapshots using the engine index and DSH native fork lineage, including cold ancestors. New conversations reopen without the plugin installed.

@@ -7,6 +7,7 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'menuTurn': '回退到第 {turn} 轮之前',
   'openOriginal': '打开原对话',
   'migrationTitle': '数据迁移',
   'migrationIntro': '在这里管理各版本的数据兼容迁移。选择任务并扫描，核对清单后再确认。',
@@ -75,6 +76,7 @@ export type RewindKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'menuTurn': 'Before turn {turn}',
   'openOriginal': 'Open original conversation',
   'migrationTitle': 'Data migrations',
   'migrationIntro': 'Manage compatibility across versions here. Choose a task, scan, then review the list before confirming.',

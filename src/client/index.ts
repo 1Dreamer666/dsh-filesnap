@@ -21,6 +21,9 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // session-controller's `ISessions` and the only one with `fork` and `open`.
 import type { RewindPoint } from '../wire.ts'
 import type { RewindActionResult, RewindActions, RewindHeaderActions } from './actions.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-commands/client'
+import { rewindMenu, rewindSelection } from './rewind-menu.ts'
+import { CommandRewindPreview, type CommandRewindActions } from './CommandRewindPreview.tsx'
 import { RewindAction } from './RewindAction.tsx'
 import { RewindHeader } from './RewindHeader.tsx'
 import { en, zh, type RewindKey } from './locales.ts'
@@ -47,7 +50,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'filesnap'
 
 /** Required services: the slot system, session control, and copy. */
-export const inject = ['slots', 'sessions', 'locale', 'conversation', 'connection']
+export const inject = ['slots', 'sessions', 'locale', 'conversation', 'connection', 'commandUi']
 
 /**
  * Client plugin body: the per-turn rewind control and the session-level strip.
@@ -93,6 +96,59 @@ export function apply(ctx: ClientContext): void {
     inject: () => migrationActions,
   }, MigrationPanel))
 
+  const actions = (sessionId: SessionId): RewindActions => ({
+    usePoints: reader(sessionId),
+    onPreview: point => request(sessionId, 'preview', { point: point.point }),
+    onRewind: async (point: RewindPoint, token: string): Promise<RewindActionResult> => {
+      // An omitted `atSeq` does not mean "cut at the beginning" — the host
+      // reads it as "the last completed turn", which would fork the newest
+      // state and then restore old files into it. A point with no anchor
+      // renders no control, so this is unreachable; it is checked anyway
+      // because the failure it prevents is silent and looks like success.
+      const atSeq = point.boundary
+      if (atSeq === undefined) {
+        return { ok: false, error: `turn ${String(point.turn)} has no completed turn before it to fork from` }
+      }
+      // The fork first, because the host files the undo record in the
+      // session named by `--into` and that has to exist before it is named.
+      let child: SessionId
+      try {
+        child = await sessions.fork({ sessionId, atSeq, increaseTitle: true })
+      } catch (error: unknown) {
+        return { ok: false, error: String(error) }
+      }
+      const done = await request(sessionId, 'rewind', { point: point.point, child, token })
+      if (done.ok && done.message !== undefined) return { ok: false, error: done.message }
+      if (done.ok) {
+        sessions.open(child)
+        const binding = sessions.binding(child)
+        if (binding !== undefined) {
+          try { refillPrompt(ctx.conversation.input.for(binding.ctx), done.promptText) }
+          catch (error) { ctx.logger.warn('filesnap: could not refill the prompt: %s', String(error)) }
+        }
+      }
+      return done
+    },
+  })
+  const selections = new Map<SessionId, ReturnType<typeof rewindSelection>>()
+  const selectionFor = (sessionId: SessionId) => {
+    let selection = selections.get(sessionId)
+    if (selection === undefined) { selection = rewindSelection(); selections.set(sessionId, selection) }
+    return selection
+  }
+  ctx.effect(() => () => { selections.clear() })
+  const t = ctx.locale.bind(NS)
+  ctx.effect(() => ctx.commandUi.decorate(rewindMenu(
+    sessionId => request(sessionId, 'points'),
+    (sessionId, point) => selectionFor(sessionId).open(point),
+    turn => t('menuTurn', { turn: String(turn) }),
+  )), 'filesnap: /rewind picker')
+
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions', id: 'filesnap-command-preview', order: 21, locale: NS,
+    inject: (sessionId): CommandRewindActions => ({ selection: selectionFor(sessionId), ...actions(sessionId) }),
+  }, CommandRewindPreview))
+
   ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register({
     name: 'conversation.chat.assistant-actions',
     id: 'filesnap',
@@ -100,40 +156,7 @@ export function apply(ctx: ClientContext): void {
     // click lands on.
     order: 30,
     locale: NS,
-    inject: (sessionId): RewindActions => ({
-      usePoints: reader(sessionId),
-      onPreview: point => request(sessionId, 'preview', { point: point.point }),
-      onRewind: async (point: RewindPoint, token: string): Promise<RewindActionResult> => {
-        // An omitted `atSeq` does not mean "cut at the beginning" — the host
-        // reads it as "the last completed turn", which would fork the newest
-        // state and then restore old files into it. A point with no anchor
-        // renders no control, so this is unreachable; it is checked anyway
-        // because the failure it prevents is silent and looks like success.
-        const atSeq = point.boundary
-        if (atSeq === undefined) {
-          return { ok: false, error: `turn ${String(point.turn)} has no completed turn before it to fork from` }
-        }
-        // The fork first, because the host files the undo record in the
-        // session named by `--into` and that has to exist before it is named.
-        let child: SessionId
-        try {
-          child = await sessions.fork({ sessionId, atSeq, increaseTitle: true })
-        } catch (error: unknown) {
-          return { ok: false, error: String(error) }
-        }
-        const done = await request(sessionId, 'rewind', { point: point.point, child, token })
-        if (done.ok && done.message !== undefined) return { ok: false, error: done.message }
-        if (done.ok) {
-          sessions.open(child)
-          const binding = sessions.binding(child)
-          if (binding !== undefined) {
-            try { refillPrompt(ctx.conversation.input.for(binding.ctx), done.promptText) }
-            catch (error) { ctx.logger.warn('filesnap: could not refill the prompt: %s', String(error)) }
-          }
-        }
-        return done
-      },
-    }),
+    inject: actions,
   }, RewindAction))
 
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({

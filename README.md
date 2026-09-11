@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 **dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
 
-**0.3.0 adds independent file previews, storage and cleanup panels, and a versioned data migration page.** Buttons return results over independent RPC without writing operation logs to the conversation. New conversations remain readable after uninstall; older conversations can be scanned and migrated from Settings.
+**0.3.0 adds independent file previews, storage and cleanup panels, and a versioned data migration page.** Buttons return results over independent RPC without writing operation logs to the conversation.
 
 ![dsh-filesnap: rewind conversations and workspace files](assets/social-preview-whale-girl.jpg)
 
@@ -44,19 +44,19 @@ Click **Show snapshot status** in the session header to open the independent **W
 
 Old sessions and snapshots are not automatically deleted. Automatic retention policies are not implemented. Button results do not append chat cards.
 
-## Data migrations and uninstall
+## Upgrading older data
 
 Open **DSH Settings → FileSnap → Data migrations**. This is the shared entry for future versions: select a migration, scan, review the session list, then confirm.
 
 The first task is **Legacy session compatibility → 0.3.0+**. It marks old `filesnap/*` events as ignorable, preserving message content, sequence numbers and fork boundaries. Each changed artifact gets an original backup beside it. Compatible data is skipped. Loaded sessions are skipped too: close them and scan again; if still loaded, restart DSH and visit Settings before opening those conversations.
 
-**New conversations contain no custom events and remain readable after uninstall. Older conversations need migration first.** The current task supports DSH JSONL and Zstd logs and leaves other plugins' events unchanged. [Migration and offline recovery](docs/migrations.md).
+The current task supports DSH JSONL and Zstd logs and leaves other plugins' events unchanged. [Migration and offline recovery](docs/migrations.md).
 
 ## Commands
 
 | Command | Result |
 |---|---|
-| `/rewind` | List recoverable turns in this conversation. |
+| `/rewind` | In the web UI, choose a turn from a menu, then preview and confirm file changes. In the terminal, list available points. |
 | `/rewind <turn>` | Preview file changes for the state before that turn. |
 | `/rewind <turn> --confirm <token>` | Confirm with the preview token. |
 | `/redo` | Reverse the rewind received by this branch. |
@@ -64,7 +64,7 @@ The first task is **Legacy session compatibility → 0.3.0+**. It marks old `fil
 | `/rewind cleanup` | Preview collection scope and return a confirmation token. |
 | `/rewind cleanup --confirm <token>` | Collect unreferenced data. |
 
-Typed commands use DSH's standard command-result presentation without a model turn. Browser buttons use RPC directly. A headless rewind returns the new conversation id for the caller to open.
+Bare `/rewind` in the web UI opens the native searchable picker. Other typed commands use DSH's standard command-result presentation without a model turn. Browser buttons and the picker use RPC directly. A headless rewind returns the new conversation id for the caller to open.
 
 ## Choosing between this and dsh-rewind-plugin
 
