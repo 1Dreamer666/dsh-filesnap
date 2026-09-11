@@ -9,6 +9,10 @@ Since 0.3.1, plugin startup runs registered migrations by default (`autoMigrate:
 
 `branch-status-titles-v1` converts the session's own latest legacy `↩` title to `🔴 Inactive ·` by appending a native DSH `session/title` revision. Existing events and inherited boundaries remain unchanged. Ordinary titles do not imply an active branch; subsequent successful rewind/redo sets both branch status markers.
 
+![Data migrations: select the branch marker task and review the session list before confirming (0.4.0, Chinese UI)](../assets/screenshots/v0.4.0/08-migrations.png)
+
+*This 0.4.0 demo deliberately disables automatic migration to preserve an eligible sample. Normal installations enable automatic migration by default; the status shown in the screenshot does not represent the default setting.*
+
 ## Included task
 
 `legacy-session-events-v1`: compatibility migration from older plugin builds and early previews to 0.3.0+.
