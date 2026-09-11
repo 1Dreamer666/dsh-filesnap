@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isMarked, mark, REWOUND_MARK, unmark } from '../src/mark.ts'
+import { activate, ACTIVE_MARK, isMarked, mark, REWOUND_MARK, unmark } from '../src/mark.ts'
 
 describe('the rewound mark', () => {
   it('adds and removes symmetrically', () => {
@@ -21,4 +21,12 @@ describe('the rewound mark', () => {
     // to disappear from exactly the place the choice is made.
     expect(mark('a very long conversation title').startsWith(REWOUND_MARK)).toBe(true)
   })
+})
+
+it('switches active/inactive marks and removes legacy or inherited prefixes', () => {
+  expect(activate('↩ old title')).toBe(`${ACTIVE_MARK}old title`)
+  expect(mark(activate('x'))).toBe(`${REWOUND_MARK}x`)
+  expect(activate(mark('x'))).toBe(`${ACTIVE_MARK}x`)
+  expect(activate(activate('x'))).toBe(`${ACTIVE_MARK}x`)
+  expect(activate(`${REWOUND_MARK}old (2)`)).toBe(`${ACTIVE_MARK}old (2)`)
 })

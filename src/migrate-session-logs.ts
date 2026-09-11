@@ -3,6 +3,7 @@ import { constants } from 'node:fs'
 import { copyFile, lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { mark } from './mark.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 
@@ -45,6 +46,25 @@ export function repairArtifact(bytes: Buffer, compressed: boolean): { bytes: Buf
   // DSH reads the first zstd frame as the header alone. Keep that framing.
   const result = compressed ? Buffer.concat([zstdCompressSync(headerLine), zstdCompressSync(body)]) : Buffer.concat([headerLine, body])
   return { bytes: result, events }
+}
+
+/** Append a native title revision; preserve every prior event and fork boundary. */
+export function migrateStatusTitles(bytes: Buffer, compressed: boolean): { bytes: Buffer; events: number } {
+  const text = decodeArtifact(bytes, compressed)
+  if (!text.endsWith('\n')) throw new Error('Incomplete session log; file left unchanged.')
+  const lines = text.trimEnd().split('\n')
+  const header = JSON.parse(lines[0]!) as { type?: string; version?: number; seedLength?: number }
+  if (header.type !== 'session' || header.version !== 0) throw new Error('Unsupported session header; file left unchanged.')
+  const rows = lines.slice(1).map(line => JSON.parse(line) as { seq?: number; time?: number; type?: string; data?: { title?: string } })
+  const latest = rows.findLast(row => row.type === 'session/title')
+  if (!latest?.data?.title?.startsWith('↩ ') || (latest.seq ?? -1) < (header.seedLength ?? 0)) return { bytes, events: 0 }
+  const last = rows.at(-1)
+  if (!Number.isSafeInteger(last?.seq) || !Number.isSafeInteger(last?.time)) throw new Error('Invalid event sequence; file left unchanged.')
+  const title = { type: 'session/title', seq: last!.seq! + 1, time: last!.time! + 1,
+    data: { title: mark(latest.data.title), source: { kind: 'user' }, messageSeqs: [] } }
+  const headerLine = Buffer.from(lines[0] + '\n')
+  const body = Buffer.from([...lines.slice(1), JSON.stringify(title), ''].join('\n'))
+  return { bytes: compressed ? Buffer.concat([zstdCompressSync(headerLine), zstdCompressSync(body)]) : Buffer.concat([headerLine, body]), events: 1 }
 }
 
 /** Dry-run by default; writes require all DSH processes using this root to be stopped. */

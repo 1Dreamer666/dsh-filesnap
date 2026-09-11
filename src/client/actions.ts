@@ -24,7 +24,9 @@ export interface RewindHeaderActions {
    * Reverse the rewind that landed in this session.
    * @returns whether the undo completed.
    */
-  onRedo: () => Promise<RewindActionResult>
+  redoSelection: ReturnType<typeof import('./redo-menu.ts').redoSelection>
+  onRedoPreview: () => Promise<RewindActionResult>
+  onRedoConfirm: (token: string) => Promise<RewindActionResult>
   /**
    * Ask the engine what it holds and what it does not protect. The answer
    * is shown in the independent snapshot panel.

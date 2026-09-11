@@ -8,11 +8,13 @@
 
 **dsh-filesnap 是 DeepSeek Harness（DSH）的对话与文件回退插件。** 先查看将写回、恢复或删除的文件，确认后一起回退对话和已跟踪文件。原对话保留为分支，选错了可以用 `/redo` 撤销回退，无需 Git。
 
-**0.3.0：独立文件预览、磁盘占用与清理面板，以及多版本数据迁移入口。** 按钮通过独立 RPC 获取结果，不往对话历史写操作日志。
+**0.3.1：回退与撤销均需预览确认，红绿灯分支标记，启动时自动迁移旧数据。** 按钮通过独立 RPC 获取结果，不往对话历史写操作日志。
 
 ![dsh-filesnap：对话与工作区一起回退](assets/social-preview-whale-girl.jpg)
 
 [完整中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/) · [English walkthrough（旧版）· 2:29](https://youtu.be/WPEXKesR_EM)
+
+0.3.1 需要 FileSnap 引擎 **0.5.1+**。发布顺序为引擎在先、插件在后；预览接口不可用时会拒绝还原。
 
 ## 安装
 
@@ -20,7 +22,7 @@
 dsh plugin --profile web add dsh-filesnap
 ```
 
-需要 DeepSeek Harness（本版集成验证使用 **0.1.2-rc.1**）、Node.js `^22.19` 或 `>=24`。支持 Linux、macOS、Windows 的 x64/arm64；FileSnap 0.5.0+ 引擎随插件安装。headless 用户把 profile 改为 `headless`。
+需要 DeepSeek Harness（本版集成验证使用 **0.1.2-rc.1**）、Node.js `^22.19` 或 `>=24`。支持 Linux、macOS、Windows 的 x64/arm64；FileSnap 0.5.1+ 引擎随插件安装。headless 用户把 profile 改为 `headless`。
 
 重启对应 profile 即可，不需要手动添加 loader。若从 0.2.1 或更早升级，先删除 `~/.dsh/profiles/<profile>/cordis.patch.yml` 中手写的 `id: filesnap` 条目，避免与内置 bundle 重复。
 
@@ -46,9 +48,11 @@ dsh plugin --profile web add dsh-filesnap
 
 ## 旧版升级
 
-打开 **DSH 设置 → FileSnap → 数据迁移**。这是今后各版本迁移共用的入口：选择迁移任务，扫描旧版数据，核对逐会话清单，再确认迁移。
+安装新版并重启对应 profile 后，插件默认自动扫描、备份并迁移未加载的旧会话；这发生在 DSH 加载插件时，而不是 npm 安装脚本里。**DSH 设置 → FileSnap → 数据迁移** 显示本次结果，并保留各版本任务的手动扫描、确认和重试入口。
 
-本版任务为 **旧版会话兼容迁移 → 0.3.0+**：将旧 `filesnap/*` 事件标为宿主可忽略，保留消息内容、序号与分支边界。每份修改过的日志旁都会保存原始备份；已兼容的数据自动跳过。已加载的会话会被跳过，关闭后重新扫描；若仍显示占用，重启 DSH 后先进入设置，不要打开目标会话。
+本版包含旧事件兼容迁移和红绿灯标题迁移。旧 `↩` 标记会改成 `🔴 Inactive ·`；普通标题不推测为 Active。后续回退与 redo 成功时，将当前沿用的分支标为 `🟢 Active ·`、离开的分支标为 `🔴 Inactive ·`，与 Agent 的运行状态无关。
+
+旧事件兼容迁移：将旧 `filesnap/*` 事件标为宿主可忽略，保留消息内容、序号与分支边界。每份修改过的日志旁都会保存原始备份；已兼容的数据自动跳过。已加载的会话会被跳过，关闭后重新扫描；若仍显示占用，重启 DSH 后先进入设置，不要打开目标会话。
 
 当前迁移支持 DSH JSONL 与 Zstd 压缩日志，不修改其他插件的事件。[迁移说明与离线修复](docs/migrations.zh.md)。
 
@@ -59,12 +63,12 @@ dsh plugin --profile web add dsh-filesnap
 | `/rewind` | 网页端打开轮次选择菜单；选择后预览文件变更并确认。终端中列出轮次。 |
 | `/rewind <turn>` | 预览回退到该轮之前会改变的文件。 |
 | `/rewind <turn> --confirm <token>` | 使用预览令牌确认恢复。 |
-| `/redo` | 撤销当前分支承接的回退。 |
+| `/redo` | 预览还原到回退前的文件清单，确认后执行。网页端选择菜单项后打开确认浮层。 |
 | `/rewind status` | 输出工作区保护范围和磁盘占用。 |
 | `/rewind cleanup` | 预览空间清理范围，返回确认令牌。 |
 | `/rewind cleanup --confirm <token>` | 回收未引用数据。 |
 
-网页端单独输入 `/rewind` 打开原生可搜索菜单。其他手动命令由 DSH 展示标准命令结果，不触发模型轮次；浏览器按钮与选择菜单直接调用 RPC。headless 回退返回新分支 id，需要自行打开。
+网页端单独输入 `/rewind` 或 `/redo` 打开原生选择菜单。其他手动命令由 DSH 展示标准命令结果，不触发模型轮次；浏览器按钮与选择菜单直接调用 RPC。headless 回退返回新分支 id，需要自行打开。
 
 ## 与 dsh-rewind-plugin 怎么选
 
@@ -90,6 +94,7 @@ dsh plugin --profile web add dsh-filesnap
 | `timeoutMs` | `120000` | 单次引擎调用时限。 |
 | `graceMs` | `2000` | 取消/超时后的终止宽限时间。 |
 | `maxOutputBytes` | `1048576` | 每条输出流的内存上限。 |
+| `autoMigrate` | `true` | 插件加载时自动迁移未加载的旧会话；关闭后可从设置手动迁移。 |
 | `declareEdits` | `true` | 通过文件系统接口观察写入前的内容。 |
 
 ## 更多文档

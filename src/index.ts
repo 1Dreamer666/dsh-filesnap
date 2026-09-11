@@ -23,6 +23,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveConfig } from './config.ts'
+import { registerMigrations } from './migrations.ts'
 import { registerRpc } from './rpc.ts'
 import { registerProjection } from './projection.ts'
 import { FilesnapRewind } from './service.ts'
@@ -33,7 +34,7 @@ export type { FilesnapConfig } from './config.ts'
 export { currentTurn, FilesnapRewind } from './service.ts'
 export type { RewindDestination } from './service.ts'
 export { parseRewind } from './commands.ts'
-export { isMarked, mark, REWOUND_MARK, unmark } from './mark.ts'
+export { activate, ACTIVE_MARK, isMarked, mark, REWOUND_MARK, unmark } from './mark.ts'
 export type { RewindCommand } from './commands.ts'
 export { capturedPoints, foldPoints, initialPoints, reducePoints, selectPoint } from './points.ts'
 export type { PointsState } from './points.ts'
@@ -77,5 +78,6 @@ export function apply(ctx: Context, config: unknown): void {
   // so a headless assembly with no projection registry is unaffected. Safe as a
   // child fiber because `register` is an effect that rides it either way.
   registerProjection(ctx)
+  registerMigrations(ctx, resolved.autoMigrate)
   registerRpc(ctx)
 }

@@ -20,6 +20,7 @@ describe('resolveConfig', () => {
       graceMs: 100,
       maxOutputBytes: 4096,
       declareEdits: false,
+      autoMigrate: false,
     })).toEqual({
       command: '/opt/bin/filesnap',
       dataDir: '/srv/snapshots',
@@ -27,6 +28,7 @@ describe('resolveConfig', () => {
       graceMs: 100,
       maxOutputBytes: 4096,
       declareEdits: false,
+      autoMigrate: false,
     })
   })
 
@@ -52,6 +54,8 @@ describe('resolveConfig', () => {
   it('refuses a non-boolean switch rather than reading it for truthiness', () => {
     expect(() => resolveConfig({ declareEdits: 'no' })).toThrow(/must be a boolean/u)
     expect(resolveConfig({ declareEdits: false }).declareEdits).toBe(false)
+    expect(resolveConfig({ autoMigrate: false }).autoMigrate).toBe(false)
+    expect(() => resolveConfig({ autoMigrate: 'yes' })).toThrow(TypeError)
   })
 
   it('refuses a config that is not a config', () => {

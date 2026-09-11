@@ -61,6 +61,8 @@ export interface FilesnapConfig {
    * where the engine cannot read the path it is handed.
    */
   readonly declareEdits: boolean
+  /** Migrate compatible unloaded legacy sessions on plugin startup. */
+  readonly autoMigrate: boolean
 }
 
 /**
@@ -76,6 +78,7 @@ export const DEFAULTS = {
   graceMs: 2_000,
   maxOutputBytes: 1 << 20,
   declareEdits: true,
+  autoMigrate: true,
 } as const satisfies Omit<FilesnapConfig, 'dataDir' | 'command'>
 
 /** Fields a deployment may name; anything else is a typo worth failing on. */
@@ -139,6 +142,8 @@ export function resolveConfig(config: unknown = {}): FilesnapConfig {
   if (declareEdits !== undefined && typeof declareEdits !== 'boolean') {
     throw new TypeError(`filesnap: \`declareEdits\` must be a boolean, got ${JSON.stringify(declareEdits)}`)
   }
+  const autoMigrate = raw['autoMigrate']
+  if (autoMigrate !== undefined && typeof autoMigrate !== 'boolean') throw new TypeError('filesnap: `autoMigrate` must be a boolean')
   const dataDir = nonEmptyString(raw, 'dataDir')
   const command = nonEmptyString(raw, 'command')
   return {
@@ -148,5 +153,6 @@ export function resolveConfig(config: unknown = {}): FilesnapConfig {
     graceMs: positiveInteger(raw, 'graceMs', DEFAULTS.graceMs),
     maxOutputBytes: positiveInteger(raw, 'maxOutputBytes', DEFAULTS.maxOutputBytes),
     declareEdits: declareEdits ?? DEFAULTS.declareEdits,
+    autoMigrate: autoMigrate ?? DEFAULTS.autoMigrate,
   }
 }

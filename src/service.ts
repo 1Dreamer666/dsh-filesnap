@@ -19,7 +19,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import { randomUUID } from 'node:crypto'
-import type { RewindPreview, CleanupPreview, CleanupOutcome } from './wire.ts'
+import type { RewindPreview, RedoPreview, CleanupPreview, CleanupOutcome } from './wire.ts'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import type { Session, SessionEvent, SessionId, SessionHeader } from '@deepseek-ai/dsh-session'
@@ -30,7 +30,7 @@ import type { FilesnapCli, FilesnapRun } from './cli.ts'
 import { bundledBinary } from './binary.ts'
 import { createFilesnapCli, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
-import { mark, unmark } from './mark.ts'
+import { mark, activate } from './mark.ts'
 import { foldPoints, selectPoint } from './points.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
 import { FALLBACK_COMMAND } from './config.ts'
@@ -169,6 +169,7 @@ export class FilesnapRewind extends Service {
   private readonly previews = new WeakMap<Session, {
     preview: RewindPreview; fingerprint: string; expires: number
   }>()
+  private readonly redoTokens = new WeakMap<Session, { token: string; fingerprint: string; turn: number; expires: number }>()
   private readonly cleanupTokens = new WeakMap<Session, { token: string; expires: number }>()
 
   /** The invoker, built once the executable has been resolved. */
@@ -817,7 +818,8 @@ export class FilesnapRewind extends Service {
     // The conversation being left now shares its whole history with the fork,
     // so mark it where the choice is made. Reversible on purpose — see mark.ts
     // for why this is not an archive.
-    const marked = this.retitle(agent.session, mark)
+    const marked = failed.length === 0 ? this.retitle(agent.session, mark) : undefined
+    if (failed.length === 0) this.retitle(this.ctx.get('sessions')?.get(child.value), activate)
 
     const promptText = promptForTurn(agent.session, point.turn)
     const outcome: RewindOutcome = {
@@ -845,7 +847,39 @@ export class FilesnapRewind extends Service {
    * @param signal - caller cancellation.
    * @returns what the undo did, or why it did not happen.
    */
-  async redo(agent: Agent, signal?: AbortSignal): Promise<RewindResult<RedoOutcome>> {
+  async previewRedo(agent: Agent, signal?: AbortSignal): Promise<RewindResult<RedoPreview>> {
+    this.redoTokens.delete(agent.session)
+    if (agent.status === 'running') return refuse({ kind: 'agent-busy' })
+    const state = this.stateFor(agent.session)
+    if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
+    const cli = await this.invoker()
+    if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
+    const run = await cli.run(['undo', '--preview', '--session', state.binding.id, '--cwd', state.binding.cwd], state.binding.cwd, signal)
+    if (run.exit !== 'ok') return engineRefusal(run, 'Cannot preview redo (FileSnap 0.5.1+ is required).')
+    const done = lastEvent(run, 'undo.preview')
+    const changes: RedoPreview['changes'][number][] = []
+    for (const event of eventsOfType(run, 'undo.change')) {
+      if (typeof event['path'] !== 'string' || (event['action'] !== 'write' && event['action'] !== 'delete')) {
+        return refuse({ kind: 'engine', message: 'The redo preview contains an invalid file change.' })
+      }
+      changes.push({ path: event['path'], action: event['action'] })
+    }
+    if (done === undefined || run.refused !== 0 || typeof done['fingerprint'] !== 'string' || !/^[a-f0-9]{64}$/u.test(done['fingerprint'])
+      || done['writes'] !== changes.filter(change => change.action === 'write').length
+      || done['deletes'] !== changes.filter(change => change.action === 'delete').length) {
+      return refuse({ kind: 'engine', message: 'The redo preview is incomplete; no files were changed.' })
+    }
+    const token = randomUUID()
+    this.redoTokens.set(agent.session, { token, fingerprint: done['fingerprint'], turn: currentTurn(agent.session), expires: Date.now() + 300_000 })
+    return { ok: true, value: { token, changes, returnedTo: agent.session.header.parentSession } }
+  }
+
+  async redo(agent: Agent, signal?: AbortSignal, token?: string): Promise<RewindResult<RedoOutcome>> {
+    const saved = this.redoTokens.get(agent.session)
+    this.redoTokens.delete(agent.session)
+    if (saved === undefined || saved.token !== token || saved.expires < Date.now() || saved.turn !== currentTurn(agent.session)) {
+      return refuse({ kind: 'engine', message: 'Preview redo and confirm again; the confirmation is missing, expired or no longer matches this turn.' })
+    }
     const state = this.stateFor(agent.session)
     if (!state.binding.ok) return refuse({ kind: 'untracked', why: state.binding.why })
     if (agent.status === 'running') return refuse({ kind: 'agent-busy' })
@@ -853,7 +887,7 @@ export class FilesnapRewind extends Service {
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
 
     const run = await cli.run(
-      ['undo', '--session', state.binding.id, '--cwd', state.binding.cwd],
+      ['undo', '--session', state.binding.id, '--cwd', state.binding.cwd, '--expect', saved.fingerprint],
       state.binding.cwd,
       signal,
     )
@@ -876,10 +910,10 @@ export class FilesnapRewind extends Service {
     // rewind forked out of — a redo only resolves at all when a rewind filed
     // its undo record here, and that fork is what named this session.
     const parentId = agent.session.header.parentSession
-    const restored = parentId === undefined
+    const restored = parentId === undefined || failed.length > 0
       ? undefined
-      : this.retitle(this.ctx.get('sessions')?.get(parentId), unmark)
-    this.retitle(agent.session, mark)
+      : this.retitle(this.ctx.get('sessions')?.get(parentId), activate)
+    if (failed.length === 0) this.retitle(agent.session, mark)
 
     return {
       ok: true,

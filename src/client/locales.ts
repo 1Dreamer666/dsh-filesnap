@@ -7,10 +7,24 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'migrationAutoRunning': '正在自动迁移旧数据…',
+  'migrationAutoDone': '本次启动的自动迁移已完成。跳过或失败的数据可手动扫描重试。',
+  'migrationAutoOff': '自动迁移未运行。',
+  'migrationAutoCounts': '已迁移 {migrated} 项，跳过或失败 {skipped} 项',
+  'redoMenu': '查看撤销回退的文件清单并确认',
+  'redoTitle': '撤销回退：还原内容确认',
+  'redoExplanation': '将文件还原到上次回退之前的状态。回退之后的编辑可能被覆盖；确认后会先保存安全快照。原对话保留，还原后可打开继续。',
+  'redoDestination': '原对话：{session}',
+  'redoEmpty': '已跟踪文件没有变化；确认后会消费本次撤销记录。',
+  'redoConfirm': '确认还原到回退前',
+  'redoWorking': '正在还原…',
+  'redoDone': '已撤销回退。',
+  'redoUnavailable': '无法预览撤销回退，请重新预览。',
+
   'menuTurn': '回退到第 {turn} 轮之前',
   'openOriginal': '打开原对话',
   'migrationTitle': '数据迁移',
-  'migrationIntro': '在这里管理各版本的数据兼容迁移。选择任务并扫描，核对清单后再确认。',
+  'migrationIntro': '新版插件加载时自动迁移旧数据。在这里查看结果，或选择任务扫描并重试。',
   'migrationTask': '迁移任务',
   'migrationSafety': '仅处理未加载的会话；请先停止共用目录的其他 DSH 进程。迁移前保存原始备份。已兼容的数据自动跳过，不修改消息内容或分支编号。扫描结果五分钟内有效。',
   'migrationWorking': '正在处理迁移任务…',
@@ -76,10 +90,24 @@ export type RewindKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'migrationAutoRunning': 'Migrating legacy data automatically…',
+  'migrationAutoDone': 'Startup migrations finished. Scan to retry skipped or failed data.',
+  'migrationAutoOff': 'Automatic migration has not run.',
+  'migrationAutoCounts': '{migrated} migrated, {skipped} skipped or failed',
+  'redoMenu': 'Review files and confirm reversing the rewind',
+  'redoTitle': 'Reverse rewind: confirm restored content',
+  'redoExplanation': 'Restore files to their state before the last rewind. Edits made since then may be overwritten; a safety snapshot is saved before applying. The original conversation is preserved and can be opened afterwards.',
+  'redoDestination': 'Original conversation: {session}',
+  'redoEmpty': 'No tracked file changes; confirmation still consumes this undo record.',
+  'redoConfirm': 'Confirm restore to before the rewind',
+  'redoWorking': 'Restoring…',
+  'redoDone': 'Rewind reversed.',
+  'redoUnavailable': 'Could not preview redo. Preview again.',
+
   'menuTurn': 'Before turn {turn}',
   'openOriginal': 'Open original conversation',
   'migrationTitle': 'Data migrations',
-  'migrationIntro': 'Manage compatibility across versions here. Choose a task, scan, then review the list before confirming.',
+  'migrationIntro': 'Upgrade migrations run automatically when the plugin loads. Review their results here, or select a task to scan and retry.',
   'migrationTask': 'Migration task',
   'migrationSafety': 'Only unloaded sessions are modified. Stop other DSH processes sharing this directory first. An original backup is saved before each change. Compatible data is skipped. Message content and fork boundaries stay intact. Scan confirmations expire after five minutes.',
   'migrationWorking': 'Processing migration…',

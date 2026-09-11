@@ -65,6 +65,13 @@ export interface RewindPreview {
   readonly changes: readonly { readonly path: string; readonly action: 'write' | 'delete' }[]
 }
 
+/** The state and affected files restored by reversing the latest rewind. */
+export interface RedoPreview {
+  readonly token: string
+  readonly changes: RewindPreview['changes']
+  readonly returnedTo?: string | undefined
+}
+
 export interface CleanupPreview {
   readonly token: string
   readonly workspace: string
@@ -91,6 +98,7 @@ export interface UiReply {
   readonly error?: string | undefined
   readonly points?: readonly RewindPoint[] | undefined
   readonly preview?: RewindPreview | undefined
+  readonly redoPreview?: RedoPreview | undefined
   readonly promptText?: string | undefined
   readonly child?: string | undefined
   readonly message?: string | undefined
@@ -143,4 +151,11 @@ export interface MigrationReport {
     readonly backup?: string | undefined
     readonly detail?: string | undefined
   }[]
+}
+
+export interface AutomaticMigrationStatus {
+  readonly running: boolean
+  readonly started: boolean
+  readonly reports: readonly MigrationReport[]
+  readonly error?: string | undefined
 }

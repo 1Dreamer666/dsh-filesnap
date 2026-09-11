@@ -8,11 +8,13 @@ English | [中文](README.zh.md)
 
 **dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
 
-**0.3.0 adds independent file previews, storage and cleanup panels, and a versioned data migration page.** Buttons return results over independent RPC without writing operation logs to the conversation.
+**0.3.1 adds redo confirmation, Active/Inactive branch markers, and automatic startup migrations.** Buttons return results over independent RPC without writing operation logs to the conversation.
 
 ![dsh-filesnap: rewind conversations and workspace files](assets/social-preview-whale-girl.jpg)
 
 [English walkthrough (older version) · 2:29](https://youtu.be/WPEXKesR_EM) · [中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/)
+
+Version 0.3.1 requires FileSnap engine **0.5.1+**. Publish the engine before the plugin. An unavailable preview interface refuses the restore.
 
 ## Install
 
@@ -20,7 +22,7 @@ English | [中文](README.zh.md)
 dsh plugin --profile web add dsh-filesnap
 ```
 
-Requires DeepSeek Harness (integration verified with **0.1.2-rc.1**) and Node.js `^22.19` or `>=24`. Linux, macOS and Windows on x64/arm64 are supported. The FileSnap 0.5.0+ engine installs with the plugin. For headless use, replace `web` with `headless`.
+Requires DeepSeek Harness (integration verified with **0.1.2-rc.1**) and Node.js `^22.19` or `>=24`. Linux, macOS and Windows on x64/arm64 are supported. The FileSnap 0.5.1+ engine installs with the plugin. For headless use, replace `web` with `headless`.
 
 Restart the profile. No manual loader entry is needed. When upgrading from 0.2.1 or earlier, remove the manually added `id: filesnap` entry from `~/.dsh/profiles/<profile>/cordis.patch.yml` to avoid a duplicate with the bundle.
 
@@ -46,9 +48,11 @@ Old sessions and snapshots are not automatically deleted. Automatic retention po
 
 ## Upgrading older data
 
-Open **DSH Settings → FileSnap → Data migrations**. This is the shared entry for future versions: select a migration, scan, review the session list, then confirm.
+Legacy `↩` titles become `🔴 Inactive ·`. Successful rewind/redo marks the branch to continue in `🟢 Active ·` and the branch being left `🔴 Inactive ·`. These describe branch choice, not Agent run status. Ordinary historical titles are not guessed to be Active.
 
-The first task is **Legacy session compatibility → 0.3.0+**. It marks old `filesnap/*` events as ignorable, preserving message content, sequence numbers and fork boundaries. Each changed artifact gets an original backup beside it. Compatible data is skipped. Loaded sessions are skipped too: close them and scan again; if still loaded, restart DSH and visit Settings before opening those conversations.
+After installing and restarting the profile, the plugin automatically scans, backs up and migrates unloaded legacy conversations. This runs when DSH loads the plugin, not in npm postinstall. **DSH Settings → FileSnap → Data migrations** shows startup results and provides manual scans, confirmation and retries for every versioned task.
+
+The first task is **Legacy session compatibility → 0.3.1+**. It marks old `filesnap/*` events as ignorable, preserving message content, sequence numbers and fork boundaries. Each changed artifact gets an original backup beside it. Compatible data is skipped. Loaded sessions are skipped too: close them and scan again; if still loaded, restart DSH and visit Settings before opening those conversations.
 
 The current task supports DSH JSONL and Zstd logs and leaves other plugins' events unchanged. [Migration and offline recovery](docs/migrations.md).
 
@@ -59,12 +63,12 @@ The current task supports DSH JSONL and Zstd logs and leaves other plugins' even
 | `/rewind` | In the web UI, choose a turn from a menu, then preview and confirm file changes. In the terminal, list available points. |
 | `/rewind <turn>` | Preview file changes for the state before that turn. |
 | `/rewind <turn> --confirm <token>` | Confirm with the preview token. |
-| `/redo` | Reverse the rewind received by this branch. |
+| `/redo` | Preview files restored to the pre-rewind state, then confirm. In the web UI, select the menu item to open the confirmation dialog. |
 | `/rewind status` | Report protection and disk usage. |
 | `/rewind cleanup` | Preview collection scope and return a confirmation token. |
 | `/rewind cleanup --confirm <token>` | Collect unreferenced data. |
 
-Bare `/rewind` in the web UI opens the native searchable picker. Other typed commands use DSH's standard command-result presentation without a model turn. Browser buttons and the picker use RPC directly. A headless rewind returns the new conversation id for the caller to open.
+Bare `/rewind` and `/redo` in the web UI open native pickers. Other typed commands use DSH's standard command-result presentation without a model turn. Browser buttons and the picker use RPC directly. A headless rewind returns the new conversation id for the caller to open.
 
 ## Choosing between this and dsh-rewind-plugin
 
@@ -90,6 +94,7 @@ There is no verified “universally best” ranking. Read the [source comparison
 | `timeoutMs` | `120000` | Per-invocation time limit. |
 | `graceMs` | `2000` | Termination grace after cancellation or timeout. |
 | `maxOutputBytes` | `1048576` | Per-stream memory limit. |
+| `autoMigrate` | `true` | Migrate unloaded legacy sessions on plugin load; disable to use manual Settings migrations. |
 | `declareEdits` | `true` | Observe pre-edit content through the filesystem interface. |
 
 ## Further reading

@@ -2,11 +2,11 @@
 
 Describe verified product behavior, with links to the source and workflows. This file is a draft; editing it does not publish or send anything.
 
-## Suggested 0.3.0 introduction
+## Suggested 0.3.1 introduction
 
 **dsh-filesnap** adds conversation and tracked-file rewind to DeepSeek Harness. Review the file list before confirming, preserve the original conversation as a branch, and use `/redo` to reverse a mistaken rewind. No Git repository is required.
 
-Version 0.3.0 adds independent storage/cleanup UI and a versioned migration page in Settings. Browser buttons use authenticated RPC instead of writing command cards or custom events into the conversation. New conversations remain readable after uninstall; legacy conversations have a scan-and-migrate workflow with backups.
+Version 0.3.1 adds confirmed redo, Active/Inactive branch markers and automatic startup migrations with results and retries in Settings. Browser buttons use authenticated RPC instead of writing command cards or custom events into the conversation. New conversations remain readable after uninstall; legacy conversations have a scan-and-migrate workflow with backups.
 
 ```console
 dsh plugin --profile web add dsh-filesnap

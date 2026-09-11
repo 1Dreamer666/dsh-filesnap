@@ -22,6 +22,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { RewindPoint } from '../wire.ts'
 import type { RewindActionResult, RewindActions, RewindHeaderActions } from './actions.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-commands/client'
+import { redoMenu, redoSelection } from './redo-menu.ts'
 import { rewindMenu, rewindSelection } from './rewind-menu.ts'
 import { CommandRewindPreview, type CommandRewindActions } from './CommandRewindPreview.tsx'
 import { RewindAction } from './RewindAction.tsx'
@@ -87,6 +88,7 @@ export function apply(ctx: ClientContext): void {
     return result.value as T
   }
   const migrationActions: MigrationActions = {
+    automaticStatus: () => maintenance('migration-auto-status', {}),
     list: () => maintenance('migration-list', {}),
     scan: task => maintenance('migration-scan', { task }),
     migrate: token => maintenance('migration-apply', { token }),
@@ -144,6 +146,19 @@ export function apply(ctx: ClientContext): void {
     turn => t('menuTurn', { turn: String(turn) }),
   )), 'filesnap: /rewind picker')
 
+  const redoSelections = new Map<SessionId, ReturnType<typeof redoSelection>>()
+  const redoSelectionFor = (sessionId: SessionId) => {
+    let selection = redoSelections.get(sessionId)
+    if (selection === undefined) { selection = redoSelection(); redoSelections.set(sessionId, selection) }
+    return selection
+  }
+  ctx.effect(() => () => { redoSelections.clear() })
+  ctx.effect(() => ctx.commandUi.decorate(redoMenu(
+    sessionId => request(sessionId, 'redo-preview'),
+    (sessionId, preview) => redoSelectionFor(sessionId).open(preview),
+    () => t('redoMenu'),
+  )), 'filesnap: /redo confirmation')
+
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions', id: 'filesnap-command-preview', order: 21, locale: NS,
     inject: (sessionId): CommandRewindActions => ({ selection: selectionFor(sessionId), ...actions(sessionId) }),
@@ -168,7 +183,9 @@ export function apply(ctx: ClientContext): void {
       onOpenSession: id => sessions.open(id as SessionId),
       onCleanupPreview: () => request(sessionId, 'cleanup-preview'),
       onCleanupConfirm: token => request(sessionId, 'cleanup', { token }),
-      onRedo: () => request(sessionId, 'redo'),
+      redoSelection: redoSelectionFor(sessionId),
+      onRedoPreview: () => request(sessionId, 'redo-preview'),
+      onRedoConfirm: token => request(sessionId, 'redo', { token }),
       onStatus: () => request(sessionId, 'status'),
     }),
   }, RewindHeader))

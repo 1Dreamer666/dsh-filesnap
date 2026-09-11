@@ -4,6 +4,11 @@
 
 **DSH Settings → FileSnap → Data migrations** is the shared entry across versions. Choose a task, scan legacy data, review the session list, then confirm. Closing Settings does not undo completed migrations; scan again after an interruption to discover remaining work.
 
+
+Since 0.3.1, plugin startup runs registered migrations by default (`autoMigrate: true`). Compatible data is skipped; loaded sessions wait for a later launch or a manual retry. Settings shows this run's in-memory results without custom conversation events. Stop other DSH processes sharing the same log directory, or set `autoMigrate: false` and migrate manually with those processes stopped.
+
+`branch-status-titles-v1` converts the session's own latest legacy `↩` title to `🔴 Inactive ·` by appending a native DSH `session/title` revision. Existing events and inherited boundaries remain unchanged. Ordinary titles do not imply an active branch; subsequent successful rewind/redo sets both branch status markers.
+
 ## Included task
 
 `legacy-session-events-v1`: compatibility migration from older plugin builds and early previews to 0.3.0+.

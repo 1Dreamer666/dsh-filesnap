@@ -302,11 +302,26 @@ async function runRewind(service: FilesnapRewind, invocation: CommandInvocation)
  * @returns the command result a UI shows.
  */
 async function runRedo(service: FilesnapRewind, invocation: CommandInvocation): Promise<CommandResult> {
-  if (invocation.rawInput.trim() !== '') {
-    return { kind: 'error', text: 'Usage: /redo — reverses the rewind that landed in this session. It takes no argument.' }
-  }
-  const outcome = await service.redo(invocation.agent, invocation.signal)
-  return outcome.ok ? redoResult(outcome.value) : refusalResult(outcome.refusal)
+  const input = invocation.rawInput.trim()
+  const match = /^--confirm ([\w-]+)$/u.exec(input)
+  if (input !== '' && match === null) return { kind: 'error', text: 'Usage: /redo [--confirm <token>]' }
+  try {
+    if (input === '') {
+      const result = await service.previewRedo(invocation.agent, invocation.signal)
+      if (!result.ok) return refusalResult(result.refusal)
+      return { kind: 'success', text: [
+        'Redo preview — restore the workspace to its state before the rewind.',
+        'Changes made since the rewind may be overwritten; a safety checkpoint is saved first.',
+        ...result.value.changes.map(change => `  ${change.action === 'write' ? 'WRITE / RESTORE' : 'DELETE'}\t${JSON.stringify(change.path)}`),
+        ...(result.value.changes.length === 0 ? ['No tracked file changes.'] : []),
+        ...(result.value.returnedTo ? [`Original conversation: ${result.value.returnedTo}`] : []),
+        `Confirm within 5 minutes: /redo --confirm ${result.value.token}`,
+      ].join('\n') }
+    }
+    const outcome = await service.redo(invocation.agent, invocation.signal, match?.[1])
+    return outcome.ok ? redoResult(outcome.value) : refusalResult(outcome.refusal)
+  } catch (error) { return { kind: 'error', text: String(error) } }
+
 }
 
 /**
@@ -331,7 +346,8 @@ export function registerCommands(commands: CommandRuntime, service: FilesnapRewi
   })
   commands.register({
     name: 'redo',
-    description: 'reverse the rewind that landed in this session',
+    description: 'preview and confirm reversing the rewind that landed in this session',
+    input: { hint: '[--confirm <token>]' },
     handler: invocation => runRedo(service, invocation),
   })
 }

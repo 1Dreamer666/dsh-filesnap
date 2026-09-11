@@ -1,6 +1,6 @@
 # Quick start
 
-This guide covers **dsh-filesnap 0.3.0**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
+This guide covers **dsh-filesnap 0.3.1**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
 
 ## Install
 
@@ -14,7 +14,7 @@ Restart the Web UI profile. The bundle and FileSnap engine install with the pack
 
 Complete at least two turns that modify files. Click rewind in an assistant action row and review files to write, restore or delete. Confirmation restores files and opens a new conversation branch, keeping the full original conversation. Cancel or Escape creates no branch.
 
-The original prompt is offered back in an empty composer without replacing drafts or images. To reverse a mistaken rewind, use the redo button in the new branch or type `/redo`. Branches share the workspace; switching conversations alone does not switch files.
+The original prompt is offered back in an empty composer without replacing drafts or images. To reverse a mistaken rewind, use the redo button in the new branch or type `/redo`, review the affected files and confirm. The current branch is marked 🟢 Active and the branch left behind 🔴 Inactive. Branches share the workspace; switching conversations alone does not switch files.
 
 ## Disk usage and cleanup
 
@@ -24,11 +24,11 @@ Buttons do not write results into the conversation. Manually typing `/rewind sta
 
 ## Migrate older data
 
-Open **DSH Settings → FileSnap → Data migrations**. Select the versioned task, scan older conversations, review the list and confirm. Loaded sessions and compatible data are skipped; changed files receive original backups. [Versioned migration guide](../../docs/migrations.md).
+Open **DSH Settings → FileSnap → Data migrations**. Startup migrations run automatically for unloaded old conversations, including legacy title markers. This page shows the results and lets you scan and retry any versioned task. Loaded sessions and compatible data are skipped; changed files receive original backups. [Versioned migration guide](../../docs/migrations.md).
 
 ## Watch the full walkthrough
 
-This video shows an older release. Its command-result cards have been replaced by independent panels for buttons in 0.3.0.
+This video shows an older release. Its command-result cards have been replaced by independent panels for buttons in 0.3.1.
 
 <!-- VIDEO -->
 

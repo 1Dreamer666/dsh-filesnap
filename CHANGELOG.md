@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1
+
+- Require file preview and single-use confirmation for `/redo` and the header redo button; recheck workspace, target and ignore rules before applying. Requires FileSnap 0.5.1.
+- Mark branches `🟢 Active ·` / `🔴 Inactive ·` after successful rewind or redo; recognize legacy prefixes.
+- Run versioned migrations automatically on plugin load (configurable with `autoMigrate`). Back up unloaded legacy logs and append native title revisions for old markers. Show startup results and keep manual retries in Settings.
+- Host compatibility remains tested against DSH 0.1.2-rc.1. Source review of 0.1.5-rc.1/master finds session forks and archive APIs, but no message branch pager or public unarchive API.
+
+Publish engine 0.5.1 before installing/publishing plugin 0.3.1.
+
 ## 0.3.0
 
 - Bare `/rewind` opens the native searchable turn picker in the web UI, then the file preview and confirmation dialog.

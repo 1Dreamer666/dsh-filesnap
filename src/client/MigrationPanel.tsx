@@ -1,16 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { MigrationPlan, MigrationReport, MigrationTaskInfo } from '../wire.ts'
+import type { MigrationPlan, MigrationReport, MigrationTaskInfo, AutomaticMigrationStatus } from '../wire.ts'
 import css from './RewindAction.module.css'
 
 export interface MigrationActions {
+  automaticStatus?: () => Promise<AutomaticMigrationStatus>
   list: () => Promise<MigrationTaskInfo[]>
   scan: (task: string) => Promise<MigrationPlan>
   migrate: (token: string) => Promise<MigrationReport>
 }
 
 /** Shared settings entry for present and future versioned migrations. */
-export function MigrationPanel({ list, scan, migrate, t }: MigrationActions & PropsLocale<'filesnap'>) {
+export function MigrationPanel({ list, scan, migrate, automaticStatus, t }: MigrationActions & PropsLocale<'filesnap'>) {
+  const [automatic, setAutomatic] = useState<AutomaticMigrationStatus | null>(null)
+  useEffect(() => {
+    if (automaticStatus === undefined) return
+    let disposed = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const refresh = async () => {
+      try { const status = await automaticStatus(); if (!disposed) { setAutomatic(status); if (status.running) timer = setTimeout(() => { void refresh() }, 500) } }
+      catch (error) { if (!disposed) setAutomatic({ running: false, started: false, reports: [], error: String(error) }) }
+    }
+    void refresh()
+    return () => { disposed = true; clearTimeout(timer) }
+  }, [automaticStatus])
   const [tasks, setTasks] = useState<MigrationTaskInfo[]>([])
   const [task, setTask] = useState('')
   const [plan, setPlan] = useState<MigrationPlan | null>(null)
@@ -28,7 +41,7 @@ export function MigrationPanel({ list, scan, migrate, t }: MigrationActions & Pr
     return () => { generation.current++ }
   }, [list])
   const run = async (confirm: boolean) => {
-    if (busy.current || task === '' || (confirm && plan === null)) return
+    if (automatic?.running || busy.current || task === '' || (confirm && plan === null)) return
     busy.current = true; setPending(true); setError(null); setReport(null)
     const ticket = ++generation.current
     try {
@@ -46,8 +59,13 @@ export function MigrationPanel({ list, scan, migrate, t }: MigrationActions & Pr
   return <section className={css.settings}>
     <h2>{t('migrationTitle')}</h2>
     <p>{t('migrationIntro')}</p>
+    {automatic !== null && <div role="status">
+      <p>{t(automatic.running ? 'migrationAutoRunning' : automatic.started ? 'migrationAutoDone' : 'migrationAutoOff')}</p>
+      {automatic.reports.map(report => <p key={report.task}>{tasks.find(task => task.id === report.task)?.nameZh ?? report.task}: {t('migrationAutoCounts', { migrated: String(report.entries.filter(row => row.state === 'migrated').length), skipped: String(report.entries.filter(row => row.state !== 'migrated').length) })}</p>)}
+      {automatic.error !== undefined && <p role="alert">{automatic.error}</p>}
+    </div>}
     <label>{t('migrationTask')}
-      <select value={task} disabled={pending} onChange={e => { setTask(e.target.value); setPlan(null); setReport(null) }}>
+      <select value={task} disabled={pending || automatic?.running} onChange={e => { setTask(e.target.value); setPlan(null); setReport(null) }}>
         {tasks.map(row => <option key={row.id} value={row.id}>{row.from} → {row.to} · {row.nameZh} / {row.name}</option>)}
       </select>
     </label>

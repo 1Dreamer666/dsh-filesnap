@@ -13,6 +13,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
+import { registerCommands } from '../src/commands.ts'
+import type { CommandInvocation, CommandResult, CommandRuntime } from '@deepseek-ai/dsh-commands'
 import { resolveConfig } from '../src/config.ts'
 import { uiRequest } from '../src/rpc.ts'
 import { FilesnapRewind } from '../src/service.ts'
@@ -84,6 +86,12 @@ async function runTurn(
     { surfaceOp: 'append' },
   )
   session.append('turn/end', { turn, reason: { kind: 'completed' } })
+}
+
+async function confirmRedo(service: FilesnapRewind, agent: Agent) {
+  const preview = await service.previewRedo(agent)
+  if (!preview.ok) throw new Error(JSON.stringify(preview.refusal))
+  return service.redo(agent, undefined, preview.value.token)
 }
 
 describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
@@ -420,6 +428,40 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(forked[0]?.seed.at(-1)?.type).toBe('turn/end')
   })
 
+  it('requires redo preview and single-use confirmation through both RPC and typed commands', async () => {
+    const file = join(workspace.path, 'a.txt')
+    writeFileSync(file, 'before')
+    const parent = liveSessionAt(live, 'parent', workspace.path)
+    const agent = agentOn(parent)
+    await runTurn(parent, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(parent, 2, 'edit', () => service.capture(agent, 2))
+    writeFileSync(file, 'after')
+    expect((await service.rewind(agent, '2', { kind: 'into', session: SessionId('child') })).ok).toBe(true)
+    const child = liveSessionAt(live, 'child', workspace.path, 'parent')
+    const signal = new AbortController().signal
+    const rpc = (endpoint: string, args: object = {}) => uiRequest(ctx, service, endpoint, { sessionId: child.id, ...args }, signal)
+    await expect(rpc('redo')).rejects.toThrow('confirm')
+    expect(readFileSync(file, 'utf8')).toBe('before')
+    const preview = (await rpc('redo-preview')).redoPreview!
+    expect(preview.changes).toEqual([{ path: file, action: 'write' }])
+    writeFileSync(file, 'new edits')
+    await expect(rpc('redo', { token: preview.token })).rejects.toThrow('stale')
+    expect(readFileSync(file, 'utf8')).toBe('new edits')
+    const handlers = new Map<string, (invocation: CommandInvocation) => Promise<CommandResult>>()
+    registerCommands({ register: (spec: { name: string; handler: (invocation: CommandInvocation) => Promise<CommandResult> }) => { handlers.set(spec.name, spec.handler) } } as unknown as CommandRuntime, service)
+    const command = (rawInput: string) => handlers.get('redo')!({ rawInput, agent: agentOn(child), signal } as CommandInvocation)
+    const result = await command('')
+    expect(result.text).toContain('WRITE / RESTORE')
+    expect(readFileSync(file, 'utf8')).toBe('new edits')
+    const token = /--confirm ([\w-]+)/u.exec(result.text!)![1]!
+    const confirmed = await command(`--confirm ${token}`)
+    expect(confirmed.kind).toBe('success')
+    expect(readFileSync(file, 'utf8')).toBe('after')
+    expect((await command(`--confirm ${token}`)).kind).toBe('error')
+    expect((await command('--force')).kind).toBe('error')
+    expect(child.snapshotEvents()).toHaveLength(0)
+  })
+
   it('files the undo record in the fork, so /redo works where the user is standing', async () => {
     const file = join(workspace.path, 'a.txt')
     const session = sessionAt('session-a', workspace.path)
@@ -439,7 +481,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(wrongPlace.ok).toBe(false)
 
     const child = sessionAt(rewound.value.child, workspace.path)
-    const redone = await service.redo(agentOn(child))
+    const redone = await confirmRedo(service, agentOn(child))
     expect(redone.ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('later work\n')
     expect(child.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
@@ -461,7 +503,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(outcome.ok && outcome.value.child).toBe('session-b')
 
     const child = sessionAt('session-b', workspace.path)
-    expect((await service.redo(agentOn(child))).ok).toBe(true)
+    expect((await confirmRedo(service, agentOn(child))).ok).toBe(true)
     expect(readFileSync(file, 'utf8')).toBe('changed\n')
   })
 
@@ -470,7 +512,7 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     // unarchive, so hiding the source would leave `/redo` with both
     // conversations hidden. A title mark is reversible, which is the property
     // the pair needs.
-    const titles = new Map<string, string>([['session-a', 'add a rate limiter']])
+    const titles = new Map<string, string>([['session-a', 'add a rate limiter'], ['session-b', '↩ add a rate limiter (2)']])
     ctx.provide('sessionTitle', {
       get: (session: { id: string }) => {
         const title = titles.get(session.id)
@@ -490,19 +532,19 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     await runTurn(session, 2, 'change it', async () => { await service.capture(agent, 2) })
     writeFileSync(file, 'changed\n')
 
+    const child = liveSessionAt(live, 'session-b', workspace.path, 'session-a')
     const rewound = await service.rewind(agent, '2', { kind: 'into', session: SessionId('session-b') })
+    expect(titles.get('session-b')).toBe('🟢 Active · add a rate limiter (2)')
     expect(rewound.ok).toBe(true)
-    expect(rewound.ok && rewound.value.markedTitle).toBe('↩ add a rate limiter')
-    expect(titles.get('session-a')).toBe('↩ add a rate limiter')
+    expect(rewound.ok && rewound.value.markedTitle).toBe('🔴 Inactive · add a rate limiter')
+    expect(titles.get('session-a')).toBe('🔴 Inactive · add a rate limiter')
 
     // The redo runs in the fork, and hands back to the session it forked from.
-    const child = liveSessionAt(live, 'session-b', workspace.path, 'session-a')
-    titles.set('session-b', 'add a rate limiter (2)')
-    const redone = await service.redo(agentOn(child))
+    const redone = await confirmRedo(service, agentOn(child))
     expect(redone.ok).toBe(true)
     expect(redone.ok && redone.value.returnedTo).toBe('session-a')
-    expect(titles.get('session-a')).toBe('add a rate limiter')
-    expect(titles.get('session-b')).toBe('↩ add a rate limiter (2)')
+    expect(titles.get('session-a')).toBe('🟢 Active · add a rate limiter')
+    expect(titles.get('session-b')).toBe('🔴 Inactive · add a rate limiter (2)')
   })
 
   it('refuses a point nobody offered', async () => {

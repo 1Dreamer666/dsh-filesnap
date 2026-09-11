@@ -7,7 +7,7 @@ import type { FilesnapRewind } from './service.ts'
 import { redoResult, refusalResult, rewindResult } from './commands.ts'
 import type { RewindResult } from './types.ts'
 import { selectPoint } from './points.ts'
-import { MigrationManager } from './migrations.ts'
+import type {} from './migrations.ts'
 import type { UiReply } from './wire.ts'
 
 const requestSchema = z.object({
@@ -49,8 +49,10 @@ export async function uiRequest(
       const result = unwrap(await service.rewind(agent, input.point, { kind: 'into', session: child.id }, signal, input.token))
       return { ok: true, child: result.child, promptText: result.promptText, message: result.failures.length === 0 ? undefined : rewindResult(result).text }
     }
+    case 'redo-preview': return { ok: true, redoPreview: unwrap(await service.previewRedo(agent, signal)) }
     case 'redo': {
-      const result = unwrap(await service.redo(agent, signal))
+      if (input.token === undefined) throw new Error('Preview redo and confirm first.')
+      const result = unwrap(await service.redo(agent, signal, input.token))
       return { ok: true, child: result.returnedTo, message: redoResult(result).text }
     }
     case 'status': return { ok: true, status: unwrap(await service.status(agent, signal)) }
@@ -65,12 +67,17 @@ export async function uiRequest(
 
 export function registerRpc(ctx: Context): void {
   ctx.inject(['connection', 'filesnap'], (rpcCtx) => {
-    const migrations = new MigrationManager(rpcCtx)
+    const migrations = () => {
+      const manager = rpcCtx.get('filesnapMigrations')
+      if (manager === undefined) throw new Error('Session migration service is not ready.')
+      return manager
+    }
     rpcCtx.connection.rpc.handle('/filesnap', async (endpoint, payload, signal) => {
       try {
-        if (endpoint === 'migration-list') { z.object({}).strict().parse(payload); return { ok: true, value: migrations.catalogue() } }
-        if (endpoint === 'migration-scan') { const input = z.object({ task: z.string() }).strict().parse(payload); return { ok: true, value: await migrations.scan(input.task, signal) } }
-        if (endpoint === 'migration-apply') { const input = z.object({ token: z.string().uuid() }).strict().parse(payload); return { ok: true, value: await migrations.execute(input.token, signal) } }
+        if (endpoint === 'migration-auto-status') { z.object({}).strict().parse(payload); return { ok: true, value: migrations().automaticStatus() } }
+        if (endpoint === 'migration-list') { z.object({}).strict().parse(payload); return { ok: true, value: migrations().catalogue() } }
+        if (endpoint === 'migration-scan') { const input = z.object({ task: z.string() }).strict().parse(payload); return { ok: true, value: await migrations().scan(input.task, signal) } }
+        if (endpoint === 'migration-apply') { const input = z.object({ token: z.string().uuid() }).strict().parse(payload); return { ok: true, value: await migrations().execute(input.token, signal) } }
         return { ok: true, value: await uiRequest(rpcCtx, rpcCtx.filesnap, endpoint, payload, signal) }
       }
       catch (error) { return { ok: true, value: { ok: false, error: String(error instanceof Error ? error.message : error) } satisfies UiReply } }
