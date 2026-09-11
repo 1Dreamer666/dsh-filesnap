@@ -8,6 +8,8 @@
 
 **[Full documentation ↗](https://extracurricular.ai/dsh-filesnap/en/)** · Installation, rewind and redo, snapshot cleanup, upgrade migrations, and FAQs, with a documentation version switcher.
 
+[0.4.0 screenshots and historical gallery](docs/screenshots.md)
+
 **dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
 
 **0.4.0 adds an independent recovery panel to preview and continue or roll back interrupted rewinds and redo.** Buttons return results over independent RPC without writing operation logs to the conversation.

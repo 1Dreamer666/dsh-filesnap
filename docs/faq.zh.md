@@ -13,7 +13,7 @@
 
 **有。** 0.2.2 的客户端在 DSH 的 `conversation.chat.assistant-actions` 插槽注册每轮回退控件，在 `conversation.session.header.actions` 注册 redo/status 操作。发布 manifest 也声明了浏览器集成及客户端服务依赖。
 
-![dsh-filesnap 的 assistant 轮次旁回退按钮，提示目标轮次和已跟踪文件范围](../assets/shot-1-turn-control.png)
+![dsh-filesnap 的 assistant 轮次旁回退按钮，提示目标轮次和已跟踪文件范围](../assets/screenshots/v0.2.2/shot-1-turn-control.png)
 
 浏览器操作会让 DSH 在选定的对话边界 fork，调用文件恢复，再打开相应子会话。手动命令的导航路径不同：返回子会话 ID，必要时由用户打开。把文件存储放进 Rust 引擎，不会让这些界面能力消失。
 
@@ -45,7 +45,8 @@ DSH 插件提供对话与轮次关联；内容存储可以跨路径、非相邻�
 
 | 证据 | 准确范围 |
 |---|---|
-| 已有截图与演示 | 插件 0.2.2；录制示例使用 DSH 0.1.2-rc.1 Web UI |
+| 历史截图与视频演示 | 插件 0.2.2；录制示例使用 DSH 0.1.2-rc.1 Web UI |
+| 当前截图 | [0.4.0 图库](screenshots.zh.md)，与历史审计和旧视频分开标注 |
 | 仓库 CI 配置 | 固定检出 `dsh-v0.1.2-rc.1`，配置了类型检查、测试、宿主构建与客户端构建 |
 | 本次核查 | 源码和文档核查；没有重新运行 DSH 兼容性测试或采集 CI run 结果 |
 | 其他宿主版本，包括 0.1.3 | 本次没有验证；宣称支持前应给出明确版本和成功运行记录 |

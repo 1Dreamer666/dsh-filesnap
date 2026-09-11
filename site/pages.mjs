@@ -1,5 +1,6 @@
 export const pageDefinitions=[
  {slug:'',group:0,en:['Overview','dsh-filesnap adds rewind and redo controls to the DeepSeek Harness chat UI. Restore conversations and tracked files together.'],zh:['概览','dsh-filesnap 在 DeepSeek Harness 聊天界面提供回退与 redo 操作。对话和已跟踪文件一起恢复，原对话保留。']},
+ {slug:'screenshots',group:0,en:['Screenshots & versions','Actual 0.4.0 screenshots, recovery and migration UI, and the preserved 0.2.2 gallery.'],zh:['截图与历史版本','0.4.0 真实界面、中断恢复与迁移面板，以及保留的 0.2.2 历史截图。'],doc:'screenshots'},
  {slug:'guide',group:0,en:['Quick start','Install dsh-filesnap and complete your first file recovery, conversation rewind and redo.'],zh:['快速开始','安装 dsh-filesnap，完成第一次文件恢复、对话回退与 redo。'],file:lang=>`site/content/guide.${lang}.md`},
  {slug:'faq',group:2,en:['UI & integration FAQ','Does dsh-filesnap have a Web UI? DSH turn integration, file deduplication, compatibility evidence and release process explained.'],zh:['界面与集成 FAQ','dsh-filesnap 的 Web UI、DSH 轮次接入、文件去重、兼容性证据与发布流程。'],doc:'faq'},
  {slug:'comparison',group:1,en:['Compare plugins','FileSnap vs dsh-rewind-plugin: content reuse, conversation preservation and reversing a rewind.'],zh:['插件对比','FileSnap 与 dsh-rewind-plugin 的去重、原对话保留和回退撤销对比。'],doc:'comparison'},

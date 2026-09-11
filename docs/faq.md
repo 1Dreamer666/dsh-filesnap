@@ -13,7 +13,7 @@ We maintain dsh-filesnap. Reviewed **2026-09-10**, using **dsh-filesnap 0.2.2** 
 
 **Yes.** In 0.2.2, the client registers a per-turn rewind control in DSH's `conversation.chat.assistant-actions` slot, plus redo/status actions in `conversation.session.header.actions`. The package manifest declares a browser integration and client service dependencies.
 
-![dsh-filesnap rewind button beside an assistant turn, with the target and tracked-file coverage](../assets/shot-1-turn-control.png)
+![dsh-filesnap rewind button beside an assistant turn, with the target and tracked-file coverage](../assets/screenshots/v0.2.2/shot-1-turn-control.png)
 
 The browser handler asks DSH to fork at the selected conversation boundary, invokes file recovery into that child, and opens the resulting conversation. A typed command has a different navigation path: it returns the child session ID, which you may need to open yourself. Separating storage into a Rust engine does not remove these UI actions.
 
@@ -45,7 +45,8 @@ The DSH plugin supplies the conversation/turn association. The content store can
 
 | Evidence | Exact scope |
 |---|---|
-| Existing screenshots and walkthrough | Plugin 0.2.2; recorded Web UI example on DSH 0.1.2-rc.1 |
+| Historical screenshots and video walkthrough | Plugin 0.2.2; recorded Web UI example on DSH 0.1.2-rc.1 |
+| Current screenshots | [0.4.0 gallery](screenshots.md), labeled separately from the historical audit and videos |
 | Repository CI configuration | Checks out `dsh-v0.1.2-rc.1`; configures type checks, tests, host build and client build |
 | This review | Source/document review; no fresh DSH compatibility test or CI-run result was collected |
 | Other host releases, including 0.1.3 | Not verified by this review; require a specific version and successful run before claiming support |

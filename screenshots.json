@@ -1,8 +1,10 @@
 [
-  "assets/shot-1-turn-control.png",
-  "assets/shot-2-rewind-command.png",
-  "assets/shot-3-rewound.png",
-  "assets/shot-4-status.png",
-  "assets/shot-5-marked-sessions.png",
-  "assets/shot-6-redo.png"
+  "assets/screenshots/v0.4.0/01-turn-control.png",
+  "assets/screenshots/v0.4.0/02-rewind-menu.png",
+  "assets/screenshots/v0.4.0/03-rewind-preview.png",
+  "assets/screenshots/v0.4.0/04-active-branches.png",
+  "assets/screenshots/v0.4.0/05-redo-preview.png",
+  "assets/screenshots/v0.4.0/06-workspace-snapshots.png",
+  "assets/screenshots/v0.4.0/08-migrations.png",
+  "assets/screenshots/v0.4.0/09-interrupted-restore.png"
 ]

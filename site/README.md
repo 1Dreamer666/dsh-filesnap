@@ -52,3 +52,7 @@ Website release verification belongs in the promotion tracker. A successful buil
 
 
 The UI & integration FAQ renders from docs/faq.md and docs/faq.zh.md. It documents UI registration, host-turn integration and configured compatibility checks with fixed-version source links. Do not turn a configured CI target into a claim that an untested host version passed.
+
+## Screenshots
+
+The current [gallery](../docs/screenshots.md) uses versioned images under `assets/screenshots/`. The site copies these directories recursively; tagged documentation continues reading assets from its own Git revision. The root [screenshots.json](../screenshots.json) selects up to eight current marketplace images. See the [capture runbook](../scripts/screenshots/README.md) before replacing images; historical images and videos retain their original version labels.

@@ -1,0 +1,66 @@
+{
+  "pluginVersion": "0.4.0",
+  "pluginCodeCommit": "eea49ea",
+  "engineVersion": "0.5.1",
+  "harnessVersion": "0.1.2-rc.1",
+  "harnessCommit": "a66e470",
+  "capturedOn": "2026-09-11",
+  "locale": "zh-CN",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "fixture": "Hand-authored conversations; real native sessions, snapshots and operations. Controlled interruption before writes.",
+  "images": [
+    {
+      "file": "01-turn-control.png",
+      "sha256": "88e1cc277dec7dbcc110424018f8fb3ce62b0ca112c55f52888ff691ce17d4e9",
+      "marketplace": true
+    },
+    {
+      "file": "02-rewind-menu.png",
+      "sha256": "4a4f398c61c625339b2974a7ce02ab17c739efe397f8d7948eecd5efcc0f2052",
+      "marketplace": true
+    },
+    {
+      "file": "03-rewind-preview.png",
+      "sha256": "446a2a68546797b0ba7993241ef1585fd73777e42caa8fa384d4d9235df1e90b",
+      "marketplace": true
+    },
+    {
+      "file": "04-active-branches.png",
+      "sha256": "618497d70c9e18d9b2d78390c095a98475330bc61feea29cd408e50c7d948402",
+      "marketplace": true
+    },
+    {
+      "file": "05-redo-preview.png",
+      "sha256": "8bbc3a6083c08b8f5e18719c00df8cee8cf1cbbe638de0ee759e2a532cdb54b4",
+      "marketplace": true
+    },
+    {
+      "file": "06-workspace-snapshots.png",
+      "sha256": "be32c2abe4de2eb66846f44b3959fea7cdc69d3611d474a4a5b54593438b7324",
+      "marketplace": true
+    },
+    {
+      "file": "07-cleanup-confirmation.png",
+      "sha256": "3fc8b3066c6ed2f2cac34afba1a2e62acdc67dbea822ef2090d4883509566d9e",
+      "marketplace": false
+    },
+    {
+      "file": "08-migrations.png",
+      "sha256": "d557231b7355d1d8a8b6eb286f8d6039de97f2a14644f2c328c52e6b621e066e",
+      "marketplace": true
+    },
+    {
+      "file": "09-interrupted-restore.png",
+      "sha256": "4427592c25d9b78a218a799596cfd3496280edfbcfa89ef556dbccc2fa132db4",
+      "marketplace": true
+    },
+    {
+      "file": "10-recovery-conflict.png",
+      "sha256": "fc818a5928ae981c3f336450f98edad75c38c6f1a222bb2e5d3a28bebe295355",
+      "marketplace": false
+    }
+  ]
+}
