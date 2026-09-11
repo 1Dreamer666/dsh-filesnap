@@ -1,6 +1,6 @@
 # dsh-filesnap vs dsh-rewind-plugin: file deduplication
 
-[README](../README.md) · [中文](dedup-comparison.zh.md) · [Workflow comparison](comparison.md)
+[README](../README.en.md) · [中文](dedup-comparison.zh.md) · [Workflow comparison](comparison.md)
 
 **Finding:** dsh-filesnap has broader content-reuse scope than SiriLee's dsh-rewind-plugin in the releases examined. It can reuse identical file bytes across paths, non-adjacent versions, sessions and workspaces sharing the same FileSnap data directory. Both deduplicate adjacent identical content; this is not a claim that the competitor has no deduplication.
 

@@ -1,6 +1,6 @@
 # 路线图
 
-[README](../README.zh.md) · [English](roadmap.md)
+[README](../README.md) · [English](roadmap.md)
 
 ## 0.3.0 已实现
 

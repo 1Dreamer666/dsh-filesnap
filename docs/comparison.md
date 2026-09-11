@@ -1,9 +1,9 @@
 # dsh-filesnap vs dsh-rewind-plugin: choose at a glance
 
-> This page preserves the historical 0.2.2 audit. Version 0.3.0 adds file previews, independent storage/cleanup UI and [versioned migrations](migrations.md), and removes custom session events. See the [README](../README.md) for current behavior.
+> This page preserves the historical 0.2.2 audit. Version 0.3.0 adds file previews, independent storage/cleanup UI and [versioned migrations](migrations.md), and removes custom session events. See the [README](../README.en.md) for current behavior.
 
 
-[README](../README.md) · [中文](comparison.zh.md) · [Deduplication experiment](dedup-comparison.md)
+[README](../README.en.md) · [中文](comparison.zh.md) · [Deduplication experiment](dedup-comparison.md)
 
 **FileSnap combines broader file deduplication, a preserved original conversation and `/redo` to reverse a mistaken rewind.** This comparison focuses on those recovery needs; planned convenience features are listed in the [roadmap](roadmap.md).
 

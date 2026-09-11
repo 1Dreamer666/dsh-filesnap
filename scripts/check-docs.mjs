@@ -71,7 +71,7 @@ for (const name of pairedDocs) {
   }
 }
 
-for (const [name, limit] of [['README.md', 350], ['README.zh.md', 350]]) {
+for (const [name, limit] of [['README.md', 350], ['README.en.md', 350]]) {
   const lines = (await readFile(path.join(root, name), 'utf8')).split('\n').length
   if (lines > limit) failures.push(`${name}: ${lines} lines exceeds the ${limit}-line product-page budget`)
 }

@@ -1,6 +1,6 @@
 # 基准测试
 
-[返回 README](../README.zh.md) · [English](benchmarks.md)
+[返回 README](../README.md) · [English](benchmarks.md)
 
 项目 README 中的时间数据是产品证据，不是可移植的性能承诺。本文记录它们目前能说明什么、
 还缺哪些元数据，以及如何得到可比较的新结果。

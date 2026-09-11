@@ -1,6 +1,6 @@
 # dsh-filesnap architecture
 
-[README](../README.md) · [中文](architecture.zh.md)
+[README](../README.en.md) · [中文](architecture.zh.md)
 
 ## Responsibilities
 

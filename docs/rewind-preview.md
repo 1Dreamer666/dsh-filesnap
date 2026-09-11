@@ -1,6 +1,6 @@
 # Preview and confirm file changes before rewind
 
-[README](../README.md) · [中文](rewind-preview.zh.md)
+[README](../README.en.md) · [中文](rewind-preview.zh.md)
 
 Included in version 0.3.0. The dependency is now `filesnap ^0.5.0`. Both the message action and `/rewind` preview first, retaining the existing fork and `/redo` behavior.
 

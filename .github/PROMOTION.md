@@ -12,7 +12,7 @@ Version 0.3.1 adds confirmed redo, Active/Inactive branch markers and automatic 
 dsh plugin --profile web add dsh-filesnap
 ```
 
-[README](../README.md) · [Migration guide](../docs/migrations.md) · [Historical source comparison](../docs/comparison.md)
+[README](../README.en.md) · [Migration guide](../docs/migrations.md) · [Historical source comparison](../docs/comparison.md)
 
 ## Claims to keep precise
 

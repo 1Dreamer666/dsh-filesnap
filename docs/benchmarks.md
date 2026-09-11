@@ -1,6 +1,6 @@
 # Benchmarks
 
-[README](../README.md) · [中文](benchmarks.zh.md)
+[README](../README.en.md) · [中文](benchmarks.zh.md)
 
 The timings in the project README are product evidence, not a portable
 performance guarantee. This document records what they currently establish,

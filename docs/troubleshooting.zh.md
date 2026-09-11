@@ -1,6 +1,6 @@
 # 排障指南
 
-[返回 README](../README.zh.md) · [English](troubleshooting.md)
+[返回 README](../README.md) · [English](troubleshooting.md)
 
 先检查真正被组合进启动树的 profile，再检查引擎状态。大多数安装问题都是“包已经安装但没有
 挂载”，或者修改后没有重启对应 profile。
@@ -68,7 +68,7 @@ $ dsh --profile web --dump-config | grep -A 2 filesnap
 4. 查看启动 stderr 中是否有配置校验错误。
 
 未知 config key 和无效值会在加载时失败。删除无效字段，或对照
-[配置表](../README.zh.md#配置)。
+[配置表](../README.md#配置)。
 
 ## filesnap 命令不可用
 

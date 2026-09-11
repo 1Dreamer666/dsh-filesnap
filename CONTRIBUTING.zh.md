@@ -85,7 +85,7 @@ session 都会被 `unknown to this harness and not marked ignorable` 拒绝。�
 $ ( cd ../deepseek-harness && node apps/cli/lib/bin.js web )
 ```
 
-`harness:link` 在每次 `npm install` 之后都要重跑 —— npm 会剪掉 `package.json` 没写的东西,而这些链接是刻意不写进去的。[README 的开发一节](README.zh.md#开发)解释了为什么。
+`harness:link` 在每次 `npm install` 之后都要重跑 —— npm 会剪掉 `package.json` 没写的东西,而这些链接是刻意不写进去的。[README 的开发一节](README.md#开发)解释了为什么。
 
 测试套件有四层,最便宜的那层什么都不需要:
 

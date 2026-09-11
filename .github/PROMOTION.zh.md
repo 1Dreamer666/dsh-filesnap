@@ -12,7 +12,7 @@
 dsh plugin --profile web add dsh-filesnap
 ```
 
-[README](../README.zh.md) · [迁移说明](../docs/migrations.zh.md) · [历史源码对比](../docs/comparison.zh.md)
+[README](../README.md) · [迁移说明](../docs/migrations.zh.md) · [历史源码对比](../docs/comparison.zh.md)
 
 ## 表述边界
 

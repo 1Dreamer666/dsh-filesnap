@@ -1,9 +1,9 @@
 # FileSnap for DSH: UI, conversation integration and compatibility
 
-> This page preserves the historical 0.2.2 audit. Version 0.3.0 adds file previews, independent storage/cleanup UI and [versioned migrations](migrations.md), and removes custom session events. See the [README](../README.md) for current behavior.
+> This page preserves the historical 0.2.2 audit. Version 0.3.0 adds file previews, independent storage/cleanup UI and [versioned migrations](migrations.md), and removes custom session events. See the [README](../README.en.md) for current behavior.
 
 
-[README](../README.md) · [中文](faq.zh.md) · [Architecture](architecture.md)
+[README](../README.en.md) · [中文](faq.zh.md) · [Architecture](architecture.md)
 
 **dsh-filesnap is a DeepSeek Harness Web UI rewind and redo plugin.** It provides a rewind control beside completed assistant turns, coordinates conversation forks with tracked-file recovery, and provides session-level redo and status actions. Its storage engine is the separate Rust package `filesnap`.
 

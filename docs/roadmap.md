@@ -1,6 +1,6 @@
 # Roadmap
 
-[README](../README.md) · [中文](roadmap.zh.md)
+[README](../README.en.md) · [中文](roadmap.zh.md)
 
 ## Implemented in 0.3.0
 

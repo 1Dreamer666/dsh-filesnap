@@ -2,103 +2,103 @@
 
 [![npm](https://img.shields.io/npm/v/dsh-filesnap?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/dsh-filesnap)
 [![CI](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml/badge.svg)](https://github.com/extracurricular-ai/dsh-filesnap/actions/workflows/ci.yml)
-[![License](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
+[![许可证](https://img.shields.io/npm/l/dsh-filesnap?color=1f6feb)](LICENSE)
 
-English | [中文](README.zh.md)
+中文 | [English](README.en.md)
 
-**dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
+**dsh-filesnap 是 DeepSeek Harness（DSH）的对话与文件回退插件。** 先查看将写回、恢复或删除的文件，确认后一起回退对话和已跟踪文件。原对话保留为分支，选错了可以用 `/redo` 撤销回退，无需 Git。
 
-**0.3.1 adds redo confirmation, Active/Inactive branch markers, and automatic startup migrations.** Buttons return results over independent RPC without writing operation logs to the conversation.
+**0.3.1：回退与撤销均需预览确认，红绿灯分支标记，启动时自动迁移旧数据。** 按钮通过独立 RPC 获取结果，不往对话历史写操作日志。
 
-![dsh-filesnap: rewind conversations and workspace files](assets/social-preview-whale-girl.jpg)
+![dsh-filesnap：对话与工作区一起回退](assets/social-preview-whale-girl.jpg)
 
-[English walkthrough (older version) · 2:29](https://youtu.be/WPEXKesR_EM) · [中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/)
+[完整中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/) · [English walkthrough（旧版）· 2:29](https://youtu.be/WPEXKesR_EM)
 
-Version 0.3.1 requires FileSnap engine **0.5.1+**. Publish the engine before the plugin. An unavailable preview interface refuses the restore.
+0.3.1 需要 FileSnap 引擎 **0.5.1+**。发布顺序为引擎在先、插件在后；预览接口不可用时会拒绝还原。
 
-## Install
+## 安装
 
 ```console
 dsh plugin --profile web add dsh-filesnap
 ```
 
-Requires DeepSeek Harness (integration verified with **0.1.2-rc.1**) and Node.js `^22.19` or `>=24`. Linux, macOS and Windows on x64/arm64 are supported. The FileSnap 0.5.1+ engine installs with the plugin. For headless use, replace `web` with `headless`.
+需要 DeepSeek Harness（本版集成验证使用 **0.1.2-rc.1**）、Node.js `^22.19` 或 `>=24`。支持 Linux、macOS、Windows 的 x64/arm64；FileSnap 0.5.1+ 引擎随插件安装。headless 用户把 profile 改为 `headless`。
 
-Restart the profile. No manual loader entry is needed. When upgrading from 0.2.1 or earlier, remove the manually added `id: filesnap` entry from `~/.dsh/profiles/<profile>/cordis.patch.yml` to avoid a duplicate with the bundle.
+重启对应 profile 即可，不需要手动添加 loader。若从 0.2.1 或更早升级，先删除 `~/.dsh/profiles/<profile>/cordis.patch.yml` 中手写的 `id: filesnap` 条目，避免与内置 bundle 重复。
 
-## Rewind and redo
+## 回退与撤销
 
-1. Let DSH complete at least two turns. Assistant action rows offer rewind when a corresponding snapshot is available.
-2. Click rewind and review the target turn and complete file list. Cancel or Escape closes the dialog without creating a branch or restoring workspace files.
-3. Confirm to create a branch, restore the files and open the recovered conversation. The original prompt is offered back in an empty composer, preserving existing drafts and attachments.
-4. To reverse the rewind, click the redo action in the new branch or run `/redo`. Button results appear in an independent panel.
+1. 让 DSH 完成至少两轮任务。已有可恢复快照时，assistant 回复的操作行会显示回退按钮。
+2. 点击按钮，检查目标轮次与文件变更清单；取消或 Esc 关闭不会创建分支或恢复工作区文件。
+3. 确认后创建分支并恢复文件，再打开新分支。原始提示词会回填到空输入框，不覆盖已有草稿或图片。
+4. 选错了回退点，在新分支点击“撤销回退”或执行 `/redo`。结果在独立面板展示。
 
-If files, ignore rules or the turn change after preview, preview again. Confirmation tokens expire after five minutes and are single-use. Partial restore failures identify affected paths. [Full workflow and limits](docs/rewind-preview.md).
+文件状态、忽略规则或轮次在预览后改变时，需要重新预览；确认令牌五分钟过期且只能使用一次。部分恢复失败会列出受影响路径，不会显示为无事发生。[完整流程与边界](docs/rewind-preview.zh.md)。
 
-## Workspace snapshots and cleanup
+## 工作区快照与空间清理
 
-Click **Show snapshot status** in the session header to open the independent **Workspace snapshots** panel:
+点击会话头部的 **“查看快照状态”**，打开独立的“工作区快照”面板：
 
-- See **workspace records** and **shared file content** separately. Shared content spans workspaces and is not this project's exclusive disk usage.
-- Inspect the snapshot turn count per session and the unprotected files with their reasons.
-- Open cleanup, review its scope and confirm. It collects only unreferenced data, keeping retained snapshots, redo recovery data and workspace files.
-- Usage refreshes after cleanup. These are current usage figures, not estimated savings; referenced content cannot be reclaimed.
+- **当前工作区索引**和**共享文件内容**分别展示，避免把跨工作区共享内容误算成当前项目独占空间。
+- 查看各会话持有的快照轮次数，以及未受保护文件及原因。
+- 在面板内点击空间清理，核对范围后确认。只回收未被引用的数据，保留现有快照、redo 救援数据和工作区文件。
+- 清理完成后刷新占用。显示的是当前用量，不是预计释放量；仍被快照引用的内容不会释放。
 
-Old sessions and snapshots are not automatically deleted. Automatic retention policies are not implemented. Button results do not append chat cards.
+不自动删除旧会话或过期快照，自动清理策略尚未提供。按钮结果不会追加到聊天记录。
 
-## Upgrading older data
+## 旧版升级
 
-Legacy `↩` titles become `🔴 Inactive ·`. Successful rewind/redo marks the branch to continue in `🟢 Active ·` and the branch being left `🔴 Inactive ·`. These describe branch choice, not Agent run status. Ordinary historical titles are not guessed to be Active.
+安装新版并重启对应 profile 后，插件默认自动扫描、备份并迁移未加载的旧会话；这发生在 DSH 加载插件时，而不是 npm 安装脚本里。**DSH 设置 → FileSnap → 数据迁移** 显示本次结果，并保留各版本任务的手动扫描、确认和重试入口。
 
-After installing and restarting the profile, the plugin automatically scans, backs up and migrates unloaded legacy conversations. This runs when DSH loads the plugin, not in npm postinstall. **DSH Settings → FileSnap → Data migrations** shows startup results and provides manual scans, confirmation and retries for every versioned task.
+本版包含旧事件兼容迁移和红绿灯标题迁移。旧 `↩` 标记会改成 `🔴 Inactive ·`；普通标题不推测为 Active。后续回退与 redo 成功时，将当前沿用的分支标为 `🟢 Active ·`、离开的分支标为 `🔴 Inactive ·`，与 Agent 的运行状态无关。
 
-The first task is **Legacy session compatibility → 0.3.1+**. It marks old `filesnap/*` events as ignorable, preserving message content, sequence numbers and fork boundaries. Each changed artifact gets an original backup beside it. Compatible data is skipped. Loaded sessions are skipped too: close them and scan again; if still loaded, restart DSH and visit Settings before opening those conversations.
+旧事件兼容迁移：将旧 `filesnap/*` 事件标为宿主可忽略，保留消息内容、序号与分支边界。每份修改过的日志旁都会保存原始备份；已兼容的数据自动跳过。已加载的会话会被跳过，关闭后重新扫描；若仍显示占用，重启 DSH 后先进入设置，不要打开目标会话。
 
-The current task supports DSH JSONL and Zstd logs and leaves other plugins' events unchanged. [Migration and offline recovery](docs/migrations.md).
+当前迁移支持 DSH JSONL 与 Zstd 压缩日志，不修改其他插件的事件。[迁移说明与离线修复](docs/migrations.zh.md)。
 
-## Commands
+## 命令
 
-| Command | Result |
+| 命令 | 结果 |
 |---|---|
-| `/rewind` | In the web UI, choose a turn from a menu, then preview and confirm file changes. In the terminal, list available points. |
-| `/rewind <turn>` | Preview file changes for the state before that turn. |
-| `/rewind <turn> --confirm <token>` | Confirm with the preview token. |
-| `/redo` | Preview files restored to the pre-rewind state, then confirm. In the web UI, select the menu item to open the confirmation dialog. |
-| `/rewind status` | Report protection and disk usage. |
-| `/rewind cleanup` | Preview collection scope and return a confirmation token. |
-| `/rewind cleanup --confirm <token>` | Collect unreferenced data. |
+| `/rewind` | 网页端打开轮次选择菜单；选择后预览文件变更并确认。终端中列出轮次。 |
+| `/rewind <turn>` | 预览回退到该轮之前会改变的文件。 |
+| `/rewind <turn> --confirm <token>` | 使用预览令牌确认恢复。 |
+| `/redo` | 预览还原到回退前的文件清单，确认后执行。网页端选择菜单项后打开确认浮层。 |
+| `/rewind status` | 输出工作区保护范围和磁盘占用。 |
+| `/rewind cleanup` | 预览空间清理范围，返回确认令牌。 |
+| `/rewind cleanup --confirm <token>` | 回收未引用数据。 |
 
-Bare `/rewind` and `/redo` in the web UI open native pickers. Other typed commands use DSH's standard command-result presentation without a model turn. Browser buttons and the picker use RPC directly. A headless rewind returns the new conversation id for the caller to open.
+网页端单独输入 `/rewind` 或 `/redo` 打开原生选择菜单。其他手动命令由 DSH 展示标准命令结果，不触发模型轮次；浏览器按钮与选择菜单直接调用 RPC。headless 回退返回新分支 id，需要自行打开。
 
-## Choosing between this and dsh-rewind-plugin
+## 与 dsh-rewind-plugin 怎么选
 
-Both support coordinated conversation/file recovery and Web controls. SiriLee's plugin emphasizes rewind in the same window, conversation-only mode and shortcuts. This plugin emphasizes **preserved original branches, `/redo`, and content deduplication across paths and snapshots**.
+双方都支持对话与文件联动恢复和 Web 操作。SiriLee 的方案强调同窗口原地回退、仅对话模式与快捷键；本插件强调**保留原对话分支、`/redo` 撤销回退、跨路径和快照的内容去重复用**。
 
-There is no verified “universally best” ranking. Read the [source comparison](docs/comparison.md) and [UI FAQ](docs/faq.md). The original storage experiments used plugin **0.2.2** with engine **0.4.0**; they are not fresh measurements of this release. [Seven dedup experiments](docs/dedup-comparison.md).
+不要只按名称判断，也没有经过验证的“公认最好”排名。参见[源码对比](docs/comparison.zh.md)、[界面 FAQ](docs/faq.zh.md)。原存储实验基线为插件 **0.2.2** 和引擎 **0.4.0**，不能当作本版重新测量的结果：[7 组去重实验](docs/dedup-comparison.zh.md)。
 
-## Coverage and limits
+## 覆盖范围与限制
 
-- Recovery needs a prior capture. Binary files, Git-ignored files and observed `ctx.fs` edits outside the project can be protected. Ignore rules, size limits and timing still apply.
-- Capture happens before tools run; write/edit hooks observe pre-images. This is not a whole-computer backup.
-- Branches share the workspace. Opening a conversation does not switch file copies. Inherited snapshots resolve through native lineage, so retain ancestor conversations and their snapshot data.
-- The first turn has no preceding completed turn to keep, so no browser rewind is offered at that boundary.
-- Preview is not a workspace lock. External editors can race the final write; a refused restore may leave an already-created empty branch in the session list.
-- Conversation-only mode, per-file restore selection, line diffs and new global shortcuts are not implemented.
+- 恢复依赖事先捕获；支持二进制、Git 忽略文件，以及经 `ctx.fs` 观察到的项目外编辑。忽略规则、大小限制和捕获时机仍影响覆盖。
+- 快照先于工具执行保存；写入/编辑前观察旧内容。它不是整台电脑的备份。
+- 分支共享同一工作区；切换对话本身不切换文件副本。继承快照通过原生分支来源定位，需要保留祖先会话及对应快照数据。
+- 第一个轮次前没有可保留的完整轮次，因此不提供该处的浏览器回退按钮。
+- 预览不是工作区锁；外部编辑器与最终写入仍可能并发。文件恢复被拒后，已创建的空分支可能留在会话列表中。
+- 尚无仅回退对话模式、逐文件勾选恢复、逐行 diff 和新的全局快捷键。
 
-## Configuration
+## 配置
 
-| Field | Default | Purpose |
+| 字段 | 默认值 | 用途 |
 |---|---|---|
-| `command` | automatic | Optional engine executable. |
-| `dataDir` | platform data directory | Separate snapshot storage outside the project. |
-| `timeoutMs` | `120000` | Per-invocation time limit. |
-| `graceMs` | `2000` | Termination grace after cancellation or timeout. |
-| `maxOutputBytes` | `1048576` | Per-stream memory limit. |
-| `autoMigrate` | `true` | Migrate unloaded legacy sessions on plugin load; disable to use manual Settings migrations. |
-| `declareEdits` | `true` | Observe pre-edit content through the filesystem interface. |
+| `command` | 自动解析 | 可选的引擎可执行文件。 |
+| `dataDir` | 平台数据目录 | 独立快照存储位置，不写进项目。 |
+| `timeoutMs` | `120000` | 单次引擎调用时限。 |
+| `graceMs` | `2000` | 取消/超时后的终止宽限时间。 |
+| `maxOutputBytes` | `1048576` | 每条输出流的内存上限。 |
+| `autoMigrate` | `true` | 插件加载时自动迁移未加载的旧会话；关闭后可从设置手动迁移。 |
+| `declareEdits` | `true` | 通过文件系统接口观察写入前的内容。 |
 
-## Further reading
+## 更多文档
 
-[Architecture](docs/architecture.md) · [Migrations](docs/migrations.md) · [Troubleshooting](docs/troubleshooting.md) · [Roadmap](docs/roadmap.md) · [Benchmarks](docs/benchmarks.md) · [Cross-assistant work](docs/cross-assistant.md) · [Contributing](CONTRIBUTING.md)
+[工作原理](docs/architecture.zh.md) · [迁移](docs/migrations.zh.md) · [排障](docs/troubleshooting.zh.md) · [路线图](docs/roadmap.zh.md) · [基准测试](docs/benchmarks.zh.md) · [跨助手实践](docs/cross-assistant.zh.md) · [贡献指南](CONTRIBUTING.zh.md)
 
-[Discussions](https://github.com/extracurricular-ai/dsh-filesnap/discussions) · [Issues](https://github.com/extracurricular-ai/dsh-filesnap/issues) · [License](LICENSE)
+[讨论](https://github.com/extracurricular-ai/dsh-filesnap/discussions) · [报告问题](https://github.com/extracurricular-ai/dsh-filesnap/issues) · [许可证](LICENSE)

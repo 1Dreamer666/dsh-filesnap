@@ -1,6 +1,6 @@
 # 多版本数据迁移
 
-[README](../README.zh.md) · [English](migrations.md)
+[README](../README.md) · [English](migrations.md)
 
 DSH **设置 → FileSnap → 数据迁移** 是各版本共用的入口。选择任务，点击“扫描旧版数据”，检查会话清单，再点击确认。关闭设置不会撤销已经完成的文件迁移；如中断，重新扫描即可判断剩余工作。
 

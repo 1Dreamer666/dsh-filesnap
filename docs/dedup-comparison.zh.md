@@ -1,6 +1,6 @@
 # dsh-filesnap 与 dsh-rewind-plugin：文件去重对比
 
-[README](../README.zh.md) · [English](dedup-comparison.md) · [使用方式对比](comparison.zh.md)
+[README](../README.md) · [English](dedup-comparison.md) · [使用方式对比](comparison.zh.md)
 
 **结论：在本次核查的版本中，dsh-filesnap 的内容复用范围更广。** 相同文件内容可以跨路径、跨非相邻版本、跨会话，以及同一 FileSnap 数据目录下的工作区复用。双方都能对连续相同内容去重，不能宣传成“对方没有去重”。
 

@@ -1,9 +1,9 @@
 # FileSnap 的 DSH 界面、对话集成与兼容性
 
-> 以下保留 0.2.2 的历史审计证据。0.3.0 已加入文件预览确认、独立磁盘占用与清理面板，以及[多版本迁移](migrations.zh.md)，并移除自定义会话事件；当前能力以 [README](../README.zh.md) 为准。
+> 以下保留 0.2.2 的历史审计证据。0.3.0 已加入文件预览确认、独立磁盘占用与清理面板，以及[多版本迁移](migrations.zh.md)，并移除自定义会话事件；当前能力以 [README](../README.md) 为准。
 
 
-[README](../README.zh.md) · [English](faq.md) · [架构](architecture.zh.md)
+[README](../README.md) · [English](faq.md) · [架构](architecture.zh.md)
 
 **dsh-filesnap 是带 Web UI 的 DeepSeek Harness 回退与 redo 插件。** 它在已完成的 assistant 轮次旁提供回退控件，联动对话分支与已跟踪文件恢复，并提供会话级 redo 和 status 操作。独立的 Rust 包 `filesnap` 负责存储引擎。
 

@@ -114,7 +114,7 @@ $ ( cd ../deepseek-harness && node apps/cli/lib/bin.js web )
 
 `harness:link` has to be re-run after any `npm install` — npm prunes what
 `package.json` does not name, and those links are deliberately not named there.
-The [README's Development section](README.md#development) explains why.
+The [README's Development section](README.en.md#development) explains why.
 
 The suite has four tiers, and the cheapest one needs nothing at all:
 

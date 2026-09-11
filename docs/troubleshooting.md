@@ -1,6 +1,6 @@
 # Troubleshooting
 
-[README](../README.md) · [中文](troubleshooting.zh.md)
+[README](../README.en.md) · [中文](troubleshooting.zh.md)
 
 Start with the composed profile and the engine status. Most installation issues
 are either a package that was installed but not mounted, or a profile that has
@@ -74,7 +74,7 @@ You should see the `id` and package `name`. If not:
 4. inspect startup stderr for configuration validation failures.
 
 Unknown config keys and invalid values fail at load. Remove the invalid field or
-compare it with the [configuration table](../README.md#configuration).
+compare it with the [configuration table](../README.en.md#configuration).
 
 ## The filesnap command is unavailable
 

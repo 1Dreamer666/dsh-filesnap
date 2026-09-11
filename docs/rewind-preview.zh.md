@@ -1,6 +1,6 @@
 # 回退前查看文件清单并确认
 
-[README](../README.zh.md) · [English](rewind-preview.md)
+[README](../README.md) · [English](rewind-preview.md)
 
 0.3.0 的文件预览功能，依赖 `filesnap ^0.5.0`；覆盖消息旁回退按钮和 `/rewind`，保留原有分支与 `/redo` 行为。
 

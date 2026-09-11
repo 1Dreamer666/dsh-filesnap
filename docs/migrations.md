@@ -1,6 +1,6 @@
 # Versioned data migrations
 
-[README](../README.md) · [中文](migrations.zh.md)
+[README](../README.en.md) · [中文](migrations.zh.md)
 
 **DSH Settings → FileSnap → Data migrations** is the shared entry across versions. Choose a task, scan legacy data, review the session list, then confirm. Closing Settings does not undo completed migrations; scan again after an interruption to discover remaining work.
 
