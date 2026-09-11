@@ -3,16 +3,21 @@ name: Documentation site
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths:
       - 'site/**'
       - 'docs/**'
       - 'assets/**'
+      - 'README*.md'
+      - 'package.json'
       - '.github/workflows/pages.yml'
   pull_request:
     paths:
       - 'site/**'
       - 'docs/**'
       - 'assets/**'
+      - 'README*.md'
+      - 'package.json'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -20,7 +25,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: documentation-pages
   cancel-in-progress: false
 
 jobs:
@@ -31,6 +36,9 @@ jobs:
       pages: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24

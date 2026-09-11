@@ -10,3 +10,18 @@
 .no-js-nav{display:flex;flex-wrap:wrap;gap:12px;padding:20px;font-size:12px;border-bottom:1px solid var(--line)}
 
 .image-link{display:block;margin:24px 0}.prose .image-link img{margin:0}.image-link span{display:block;text-align:right;font-size:10px;color:var(--muted);padding-top:6px}.image-link:hover span{color:var(--blue)}
+
+/* Native disclosure keeps version navigation usable without JavaScript. */
+.version-switcher{position:relative;font-size:12px;flex-shrink:0}
+.version-switcher summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;border:1px solid var(--line);border-radius:7px;padding:6px 10px;background:var(--soft);white-space:nowrap}
+.version-switcher summary::-webkit-details-marker{display:none}
+.version-switcher summary:focus-visible{outline:3px solid #84a5ff;outline-offset:3px}
+.version-switcher nav{position:absolute;right:0;top:calc(100% + 8px);width:260px;max-width:calc(100vw - 36px);max-height:65vh;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 12px 35px #18243a20}
+.version-switcher nav a{display:block;padding:9px 10px;border-radius:5px;color:var(--ink)}
+.version-switcher nav a:hover,.version-switcher nav a[aria-current]{background:#edf3ff;color:var(--blue)}
+.version-switcher small{display:block;white-space:normal;color:var(--muted);font-size:10px;margin-top:3px}
+.edition-notice{padding:12px 22px;background:var(--soft);border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}
+@media(max-width:1100px){.docs-label,.top-divider{display:none}.topbar{gap:16px}.top-links{gap:12px}}
+@media(max-width:760px){.topbar{gap:10px;padding:0 12px}.top-links{gap:10px}.version-switcher{font-size:11px}.version-switcher summary{padding:5px 7px;gap:5px}.edition-notice{font-size:11px;padding:12px 16px}}
+@media(max-width:360px){.brand-sub{display:none}.brand{font-size:16px;gap:5px}.brand svg{width:24px;height:24px}.top-links{gap:7px}.topbar{gap:7px;padding:0 8px}}
+@media(max-width:760px){.version-switcher nav{position:fixed;top:calc(var(--header) + 8px);right:12px}}

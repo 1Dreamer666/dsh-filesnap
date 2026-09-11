@@ -6,7 +6,7 @@
 
 中文 | [English](README.en.md)
 
-**[完整使用手册 ↗](https://extracurricular.ai/dsh-filesnap/zh/)** · 安装、回退与撤销、快照清理、升级迁移和常见问题。
+**[完整使用手册 ↗](https://extracurricular.ai/dsh-filesnap/zh/)** · 安装、回退与撤销、快照清理、升级迁移和常见问题；支持按版本切换文档。
 
 **dsh-filesnap 是 DeepSeek Harness（DSH）的对话与文件回退插件。** 先查看将写回、恢复或删除的文件，确认后一起回退对话和已跟踪文件。原对话保留为分支，选错了可以用 `/redo` 撤销回退，无需 Git。
 
