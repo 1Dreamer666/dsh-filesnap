@@ -40,6 +40,10 @@ export type { FilesnapStatus } from './wire.ts'
 
 /** What a completed redo did. */
 export interface RedoOutcome {
+  /** Whether the completed branch was archived through the host's public API. */
+  readonly archived?: boolean
+  /** Archiving can fail independently of an already completed file restore. */
+  readonly archiveError?: string
   /** Files written. */
   readonly written: number
   /** Files removed. */
@@ -74,6 +78,8 @@ export type RewindRefusal
     | { readonly kind: 'agent-busy' }
     /** The conversation could not be forked at that boundary. */
     | { readonly kind: 'fork-failed'; readonly message: string }
+    /** No restore is available in this session, including after a completed redo. */
+    | { readonly kind: 'no-restore' }
     /** The engine refused or could not run. */
     | { readonly kind: 'engine'; readonly message: string }
 

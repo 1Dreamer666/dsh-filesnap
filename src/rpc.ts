@@ -49,11 +49,17 @@ export async function uiRequest(
       const result = unwrap(await service.rewind(agent, input.point, { kind: 'into', session: child.id }, signal, input.token))
       return { ok: true, child: result.child, promptText: result.promptText, message: result.failures.length === 0 ? undefined : rewindResult(result).text }
     }
-    case 'redo-preview': return { ok: true, redoPreview: unwrap(await service.previewRedo(agent, signal)) }
+    case 'redo-preview': {
+      const result = await service.previewRedo(agent, signal)
+      if (!result.ok && result.refusal.kind === 'no-restore') return { ok: false, errorCode: 'no-restore' }
+      return { ok: true, redoPreview: unwrap(result) }
+    }
     case 'redo': {
       if (input.token === undefined) throw new Error('Preview redo and confirm first.')
-      const result = unwrap(await service.redo(agent, signal, input.token))
-      return { ok: true, child: result.returnedTo, message: redoResult(result).text }
+      const outcome = await service.redo(agent, signal, input.token)
+      if (!outcome.ok && outcome.refusal.kind === 'no-restore') return { ok: false, errorCode: 'no-restore' }
+      const result = unwrap(outcome)
+      return { ok: true, child: result.returnedTo, archived: result.archived, message: redoResult(result).text }
     }
     case 'status': return { ok: true, status: unwrap(await service.status(agent, signal)) }
     case 'cleanup-preview': return { ok: true, cleanup: unwrap(await service.previewCleanup(agent, signal)) }

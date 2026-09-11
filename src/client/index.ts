@@ -157,6 +157,7 @@ export function apply(ctx: ClientContext): void {
     sessionId => request(sessionId, 'redo-preview'),
     (sessionId, preview) => redoSelectionFor(sessionId).open(preview),
     () => t('redoMenu'),
+    () => t('redoNoRestore'),
   )), 'filesnap: /redo confirmation')
 
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
@@ -185,7 +186,13 @@ export function apply(ctx: ClientContext): void {
       onCleanupConfirm: token => request(sessionId, 'cleanup', { token }),
       redoSelection: redoSelectionFor(sessionId),
       onRedoPreview: () => request(sessionId, 'redo-preview'),
-      onRedoConfirm: token => request(sessionId, 'redo', { token }),
+      onRedoConfirm: async token => {
+        const result = await request(sessionId, 'redo', { token })
+        // Host archive feeds can unmount the old branch before this RPC returns.
+        // Keep navigation outside the dialog's component lifecycle.
+        if (result.ok && result.archived && result.child !== undefined) sessions.open(result.child as SessionId)
+        return result
+      },
       onStatus: () => request(sessionId, 'status'),
     }),
   }, RewindHeader))

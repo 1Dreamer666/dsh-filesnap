@@ -267,3 +267,9 @@ export function createFilesnapCli(ctx: Context, options: FilesnapCliOptions): Fi
     },
   }
 }
+
+/** FileSnap 0.5.1 reports an absent undo record as this exact usage diagnostic. */
+export function hasNoRestore(run: FilesnapRun, session: string): boolean {
+  return run.exit === 'usage' && run.refused === 0 && run.events.length === 0
+    && run.stderr.trim() === `filesnap: session ${session} has no restore to undo`
+}

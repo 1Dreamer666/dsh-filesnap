@@ -1,6 +1,6 @@
 # Quick start
 
-This guide covers **dsh-filesnap 0.3.1**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
+This guide covers **dsh-filesnap 0.3.2**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
 
 ## Install
 
@@ -15,6 +15,8 @@ Restart the Web UI profile. The bundle and FileSnap engine install with the pack
 Complete at least two turns that modify files. Click rewind in an assistant action row and review files to write, restore or delete. Confirmation restores files and opens a new conversation branch, keeping the full original conversation. Cancel or Escape creates no branch.
 
 The original prompt is offered back in an empty composer without replacing drafts or images. To reverse a mistaken rewind, use the redo button in the new branch or type `/redo`, review the affected files and confirm. The current branch is marked 🟢 Active and the branch left behind 🔴 Inactive. Branches share the workspace; switching conversations alone does not switch files.
+
+After a successful redo with no remaining undo records, the old branch is automatically archived and the original conversation opens. Conversation content and snapshots are preserved. An absent undo record shows a normal status message; failed file restores or remaining undo records prevent automatic archiving.
 
 ## Disk usage and cleanup
 

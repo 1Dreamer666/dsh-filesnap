@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -428,6 +428,78 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(forked[0]?.seed.at(-1)?.type).toBe('turn/end')
   })
 
+  it('treats absent undo as a normal state and archives only a successfully exhausted redo branch', async () => {
+    const archiveSession = vi.fn(async (_id: string) => {})
+    ctx.provide('workspaceRegistry', { archiveSession })
+    const file = join(workspace.path, 'a.txt')
+    writeFileSync(file, 'before')
+    const parent = liveSessionAt(live, 'parent', workspace.path), agent = agentOn(parent)
+    await runTurn(parent, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(parent, 2, 'edit', () => service.capture(agent, 2))
+    writeFileSync(file, 'after')
+    const request = (session: Session, endpoint: string, args: object = {}) => uiRequest(ctx, service, endpoint, { sessionId: session.id, ...args }, new AbortController().signal)
+    expect(await request(parent, 'redo-preview')).toEqual({ ok: false, errorCode: 'no-restore' })
+    expect(archiveSession).not.toHaveBeenCalled()
+    expect((await service.rewind(agent, '2', { kind: 'into', session: SessionId('child') })).ok).toBe(true)
+    const child = liveSessionAt(live, 'child', workspace.path, 'parent')
+    const preview = (await request(child, 'redo-preview')).redoPreview!
+    expect(archiveSession).not.toHaveBeenCalled()
+    const result = await request(child, 'redo', { token: preview.token })
+    expect(result).toMatchObject({ ok: true, archived: true, child: parent.id })
+    expect(archiveSession).toHaveBeenCalledExactlyOnceWith(child.id)
+    expect(readFileSync(file, 'utf8')).toBe('after')
+    expect(await request(child, 'redo-preview')).toEqual({ ok: false, errorCode: 'no-restore' })
+    expect((await service.previewRedo(agentOn(child)))).toEqual({ ok: false, refusal: { kind: 'no-restore' } })
+    expect((await service.points(agent)).ok).toBe(true)
+    expect(parent.snapshotEvents().some(event => event.type === 'user/message')).toBe(true)
+    expect(archiveSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a branch with remaining undo records and preserves redo success if archiving fails', async () => {
+    const archiveSession = vi.fn(async (_id: string) => { throw new Error('archive unavailable') })
+    ctx.provide('workspaceRegistry', { archiveSession })
+    const file = join(workspace.path, 'a.txt')
+    writeFileSync(file, 'before')
+    const parent = liveSessionAt(live, 'parent', workspace.path), agent = agentOn(parent)
+    await runTurn(parent, 1, 'look', () => service.capture(agent, 1))
+    await runTurn(parent, 2, 'edit', () => service.capture(agent, 2))
+    const child = liveSessionAt(live, 'child', workspace.path, 'parent')
+    writeFileSync(file, 'first restore')
+    expect((await service.rewind(agent, '2', { kind: 'into', session: child.id })).ok).toBe(true)
+    writeFileSync(file, 'second restore')
+    expect((await service.rewind(agent, '2', { kind: 'into', session: child.id })).ok).toBe(true)
+    const first = await confirmRedo(service, agentOn(child))
+    expect(first.ok && first.value.archived).toBe(false)
+    expect(archiveSession).not.toHaveBeenCalled()
+    expect(readFileSync(file, 'utf8')).toBe('second restore')
+    const second = await confirmRedo(service, agentOn(child))
+    expect(second).toMatchObject({ ok: true, value: { archived: false, archiveError: 'Error: archive unavailable' } })
+    expect(readFileSync(file, 'utf8')).toBe('first restore')
+    expect(archiveSession).toHaveBeenCalledExactlyOnceWith(child.id)
+  })
+
+  it('does not archive a redo with failed files or mislabel other engine errors as an upgrade requirement', async () => {
+    const archiveSession = vi.fn(async (_id: string) => {})
+    ctx.provide('workspaceRegistry', { archiveSession })
+    const child = liveSessionAt(live, 'child', workspace.path, 'parent')
+    const run = vi.fn()
+    vi.spyOn(service as unknown as { invoker(): Promise<{ run: typeof run }> }, 'invoker').mockResolvedValue({ run })
+    const empty = { events: [], refused: 0, code: 3, exit: 'usage' as const, stderr: "error: unexpected argument '--preview' found" }
+    run.mockResolvedValueOnce(empty)
+    expect(await service.previewRedo(agentOn(child))).toMatchObject({ ok: false, refusal: { message: expect.stringContaining('0.5.1+') } })
+    run.mockResolvedValueOnce({ ...empty, exit: 'failed', code: 2, stderr: 'permission denied' })
+    const failure = await service.previewRedo(agentOn(child))
+    expect(failure).toMatchObject({ ok: false, refusal: { message: 'Cannot preview redo: permission denied' } })
+    run.mockResolvedValueOnce({ ...empty, exit: 'ok', code: 0, stderr: '', events: [{ v: 1, type: 'undo.preview', writes: 0, deletes: 0, target: 'target', fingerprint: 'a'.repeat(64) }] })
+    const preview = await service.previewRedo(agentOn(child))
+    expect(preview.ok).toBe(true)
+    if (!preview.ok) return
+    run.mockResolvedValueOnce({ ...empty, exit: 'partial', code: 1, stderr: '', events: [{ v: 1, type: 'restore.failed', path: '/failed', error: 'permission denied' }, { v: 1, type: 'restore.done', written: 0, deleted: 0, failed: 1, safety: 'saved' }] })
+    expect(await service.redo(agentOn(child), undefined, preview.value.token)).toMatchObject({ ok: true, value: { archived: false, failures: [{ path: '/failed', error: 'permission denied' }] } })
+    expect(archiveSession).not.toHaveBeenCalled()
+    expect(run).toHaveBeenCalledTimes(4)
+  })
+
   it('requires redo preview and single-use confirmation through both RPC and typed commands', async () => {
     const file = join(workspace.path, 'a.txt')
     writeFileSync(file, 'before')
@@ -508,10 +580,8 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
   })
 
   it('marks the conversation a rewind leaves, and unmarks it on the way back', async () => {
-    // Not an archive: `ctx.workspaceRegistry` ships `archiveSession` and no
-    // unarchive, so hiding the source would leave `/redo` with both
-    // conversations hidden. A title mark is reversible, which is the property
-    // the pair needs.
+    // Rewind keeps the source visible. Completed redo can archive the child
+    // when a host archive service is available and no undo records remain.
     const titles = new Map<string, string>([['session-a', 'add a rate limiter'], ['session-b', '↩ add a rate limiter (2)']])
     ctx.provide('sessionTitle', {
       get: (session: { id: string }) => {

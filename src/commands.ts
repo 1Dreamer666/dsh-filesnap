@@ -82,6 +82,8 @@ export function refusalResult(refusal: RewindRefusal): CommandResult {
       return { kind: 'error', text: 'The agent is mid-turn. Stop it first, then rewind.' }
     case 'fork-failed':
       return { kind: 'error', text: `The conversation could not be forked: ${refusal.message}` }
+    case 'no-restore':
+      return { kind: 'success', text: 'This conversation has no rewind to reverse. It may already have been reversed. Use /redo in the branch opened by a rewind.' }
     case 'engine':
       return { kind: 'error', text: refusal.message }
     /* v8 ignore next 2 -- RewindRefusal is closed and every member is handled above */
@@ -189,6 +191,8 @@ export function redoResult(outcome: RedoOutcome): CommandResult {
       ? `Continue in ${outcome.returnedTo} — it is not open here, so its "rewound" mark stays until it is.`
       : `Continue in "${outcome.restoredTitle}" (${outcome.returnedTo}); this one is now marked instead.`)
   }
+  if (outcome.archived) lines.push('', 'The completed branch was archived. Its conversation and snapshots are preserved.')
+  if (outcome.archiveError !== undefined) lines.push('', `Files were restored, but the branch could not be archived: ${outcome.archiveError}`)
   return { kind: 'success', text: lines.join('\n') }
 }
 

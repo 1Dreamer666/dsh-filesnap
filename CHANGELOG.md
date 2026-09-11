@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2
+
+- Treat a missing or consumed undo record as a normal empty state in the redo dialog, command menu and headless command. Remove misleading engine-upgrade hints and restore/retry controls for this state; preserve actual engine errors.
+- After a successful redo, check for remaining undo records and archive only an exhausted fork through the host's public archive API. Preserve conversations and snapshots; keep branches visible after file failures, remaining undo records or archive errors.
+- Return to the original conversation after automatic archiving, including when the host archive update unmounts the old branch before the RPC returns.
+- Engine requirement remains FileSnap 0.5.1+. No engine release is needed for this patch.
+
 ## 0.3.1
 
 - Require file preview and single-use confirmation for `/redo` and the header redo button; recheck workspace, target and ignore rules before applying. Requires FileSnap 0.5.1.

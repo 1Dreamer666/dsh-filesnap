@@ -22,3 +22,16 @@ it('opens only a preview, propagates unavailable undo, and ignores cancelled sel
   a.close()
   expect(a.snapshot()).toBeNull()
 })
+
+it('shows an informational row for absent redo without opening a restore or retaining an old preview', async () => {
+  const preview = { token: 'old-token', changes: [] }
+  const read = vi.fn().mockResolvedValueOnce({ ok: true, redoPreview: preview }).mockResolvedValue({ ok: false, errorCode: 'no-restore' })
+  const open = vi.fn(), session = { sessionId: SessionId('s') }, signal = new AbortController().signal
+  const menu = redoMenu(read, open, () => 'Review', () => '当前会话没有可撤销的回退')
+  const old = await menu.ui.options(session, signal)
+  const empty = await menu.ui.options(session, signal)
+  expect(empty).toEqual([{ id: 'no-restore', label: '当前会话没有可撤销的回退' }])
+  await menu.ui.onSelect(empty[0]!, session)
+  expect(open).not.toHaveBeenCalled()
+  expect(() => menu.ui.onSelect(old[0]!, session)).toThrow('Reopen')
+})

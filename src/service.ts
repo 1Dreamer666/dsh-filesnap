@@ -28,7 +28,7 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import { registerCommands } from './commands.ts'
 import type { FilesnapCli, FilesnapRun } from './cli.ts'
 import { bundledBinary } from './binary.ts'
-import { createFilesnapCli, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
+import { createFilesnapCli, hasNoRestore, eventsOfType, lastEvent, numberField, stringField } from './cli.ts'
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
 import { mark, activate } from './mark.ts'
 import { foldPoints, selectPoint } from './points.ts'
@@ -855,7 +855,11 @@ export class FilesnapRewind extends Service {
     const cli = await this.invoker()
     if ('unavailable' in cli) return refuse({ kind: 'untracked', why: cli.unavailable })
     const run = await cli.run(['undo', '--preview', '--session', state.binding.id, '--cwd', state.binding.cwd], state.binding.cwd, signal)
-    if (run.exit !== 'ok') return engineRefusal(run, 'Cannot preview redo (FileSnap 0.5.1+ is required).')
+    if (hasNoRestore(run, state.binding.id)) return refuse({ kind: 'no-restore' })
+    if (run.exit !== 'ok') {
+      const unsupported = run.exit === 'usage' && /unexpected argument ['"]--preview['"]/u.test(run.stderr)
+      return engineRefusal(run, unsupported ? 'This engine does not support redo preview; FileSnap 0.5.1+ is required' : 'Cannot preview redo')
+    }
     const done = lastEvent(run, 'undo.preview')
     const changes: RedoPreview['changes'][number][] = []
     for (const event of eventsOfType(run, 'undo.change')) {
@@ -895,6 +899,7 @@ export class FilesnapRewind extends Service {
     // the rewind: they are reported, not refused, because the safety checkpoint
     // captured them before this wrote over them.
     if (run.exit !== 'ok' && run.exit !== 'partial') {
+      if (hasNoRestore(run, state.binding.id)) return refuse({ kind: 'no-restore' })
       return engineRefusal(run, 'filesnap could not reverse the rewind')
     }
     const done = lastEvent(run, 'restore.done')
@@ -915,6 +920,23 @@ export class FilesnapRewind extends Service {
       : this.retitle(this.ctx.get('sessions')?.get(parentId), activate)
     if (failed.length === 0) this.retitle(agent.session, mark)
 
+    let archived = false
+    let archiveError: string | undefined
+    if (failed.length === 0 && parentId !== undefined) {
+      // Undo records form a stack. Only hide a completed branch after the last
+      // record has been consumed; never infer this from its title or ancestry.
+      try {
+        const remaining = await cli.run(['undo', '--preview', '--session', state.binding.id, '--cwd', state.binding.cwd], state.binding.cwd, signal)
+        if (hasNoRestore(remaining, state.binding.id)) {
+          const registry = this.ctx.get('workspaceRegistry') as { archiveSession(id: SessionId): Promise<void> } | undefined
+          if (typeof registry?.archiveSession === 'function') {
+            await registry.archiveSession(agent.session.id)
+            archived = true
+          } else archiveError = 'This host does not provide session archiving.'
+        } else if (remaining.exit !== 'ok') archiveError = 'Could not verify that the branch has no remaining undo records; it was kept visible.'
+      } catch (error) { archiveError = String(error) }
+    }
+
     return {
       ok: true,
       value: {
@@ -923,7 +945,9 @@ export class FilesnapRewind extends Service {
         failures: failed,
         safety,
         conflicts,
-          ...parentId === undefined ? {} : { returnedTo: parentId },
+        archived,
+        ...archiveError === undefined ? {} : { archiveError },
+        ...parentId === undefined ? {} : { returnedTo: parentId },
         ...restored === undefined ? {} : { restoredTitle: restored },
       },
     }

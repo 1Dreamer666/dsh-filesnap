@@ -10,13 +10,13 @@
 
 **dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
 
-**0.3.1 adds redo confirmation, Active/Inactive branch markers, and automatic startup migrations.** Buttons return results over independent RPC without writing operation logs to the conversation.
+**0.3.2 handles unavailable redo accurately and automatically archives completed branches after their last undo record is consumed.** Buttons return results over independent RPC without writing operation logs to the conversation.
 
 ![dsh-filesnap: rewind conversations and workspace files](assets/social-preview-whale-girl.jpg)
 
 [English walkthrough (older version) · 2:29](https://youtu.be/WPEXKesR_EM) · [中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/)
 
-Version 0.3.1 requires FileSnap engine **0.5.1+**. Publish the engine before the plugin. An unavailable preview interface refuses the restore.
+Version 0.3.2 requires FileSnap engine **0.5.1+**. Publish the engine before the plugin. An unavailable preview interface refuses the restore.
 
 ## Install
 
@@ -33,7 +33,9 @@ Restart the profile. No manual loader entry is needed. When upgrading from 0.2.1
 1. Let DSH complete at least two turns. Assistant action rows offer rewind when a corresponding snapshot is available.
 2. Click rewind and review the target turn and complete file list. Cancel or Escape closes the dialog without creating a branch or restoring workspace files.
 3. Confirm to create a branch, restore the files and open the recovered conversation. The original prompt is offered back in an empty composer, preserving existing drafts and attachments.
-4. To reverse the rewind, click the redo action in the new branch or run `/redo`. Button results appear in an independent panel.
+4. To reverse the rewind, click the redo action in the new branch or run `/redo`, then preview and confirm the file changes. After a successful restore with no remaining undo records, the old branch is archived and the original conversation opens. Conversation content and snapshots are preserved.
+
+When no undo record is available, including after a completed redo, a normal status message replaces the upgrade error and confirmation controls. Ordinary conversations are never archived simply because they have no undo record. Branches with failed file restores or remaining undo records stay visible. If host archiving is unavailable or fails, the branch is kept and the restore result explains why.
 
 If files, ignore rules or the turn change after preview, preview again. Confirmation tokens expire after five minutes and are single-use. Partial restore failures identify affected paths. [Full workflow and limits](docs/rewind-preview.md).
 

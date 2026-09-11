@@ -96,6 +96,8 @@ export interface UiReply {
   readonly status?: FilesnapStatus | undefined
   readonly ok: boolean
   readonly error?: string | undefined
+  readonly errorCode?: 'no-restore' | undefined
+  readonly archived?: boolean | undefined
   readonly points?: readonly RewindPoint[] | undefined
   readonly preview?: RewindPreview | undefined
   readonly redoPreview?: RedoPreview | undefined

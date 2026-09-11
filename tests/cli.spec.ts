@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FilesnapRun } from '../src/cli.ts'
-import { eventsOfType, lastEvent, numberField, parseEvents, stringField } from '../src/cli.ts'
+import { hasNoRestore, eventsOfType, lastEvent, numberField, parseEvents, stringField } from '../src/cli.ts'
 
 /** Build a run from parsed stdout, for the readers that take a whole run. */
 function runOf(stdout: string): FilesnapRun {
@@ -89,4 +89,14 @@ describe('event readers', () => {
     const odd = runOf('{"v":1,"type":"capture.done","dropped":1e999}\n')
     expect(numberField(lastEvent(odd, 'capture.done'), 'dropped', 0)).toBe(0)
   })
+})
+
+it('recognizes only the exact absent-undo diagnostic for the requested session', () => {
+  const run: FilesnapRun = { ...runOf(''), exit: 'usage', code: 3, stderr: 'filesnap: session child has no restore to undo' }
+  expect(hasNoRestore(run, 'child')).toBe(true)
+  expect(hasNoRestore(run, 'parent')).toBe(false)
+  expect(hasNoRestore({ ...run, exit: 'failed' }, 'child')).toBe(false)
+  expect(hasNoRestore({ ...run, stderr: "error: unexpected argument '--preview' found" }, 'child')).toBe(false)
+  expect(hasNoRestore({ ...run, stderr: 'filesnap: cannot read the undo record: permission denied' }, 'child')).toBe(false)
+  expect(hasNoRestore({ ...run, refused: 1 }, 'child')).toBe(false)
 })

@@ -14,13 +14,14 @@ export function RedoAction({ redoSelection: selection, onRedoPreview, onRedoConf
   const generation = useRef(0)
   const [phase, setPhase] = useState<'ready' | 'loading' | 'confirming'>('ready')
   const [preview, setPreview] = useState<RedoPreview | null>(null)
+  const [noRestore, setNoRestore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ message: string; child?: string | undefined } | null>(null)
   useEffect(() => () => { generation.current++; busy.current = false; selection.close() }, [selection])
   useEffect(() => {
     if (selected === null || busy.current) return
     generation.current++
-    setPreview(selected.preview); setError(null); setResult(null); setPhase('ready')
+    setNoRestore(false); setPreview(selected.preview); setError(null); setResult(null); setPhase('ready')
     dialog.current?.showModal()
   }, [selected])
   const close = () => {
@@ -32,12 +33,13 @@ export function RedoAction({ redoSelection: selection, onRedoPreview, onRedoConf
     if (busy.current) return
     busy.current = true
     const attempt = ++generation.current
-    setPhase('loading'); setPreview(null); setError(null); setResult(null)
+    setNoRestore(false); setPhase('loading'); setPreview(null); setError(null); setResult(null)
     dialog.current?.showModal()
     try {
       const reply = await onRedoPreview()
       if (attempt !== generation.current) return
       if (reply.ok && reply.redoPreview !== undefined) setPreview(reply.redoPreview)
+      else if (reply.errorCode === 'no-restore') setNoRestore(true)
       else setError(reply.error ?? t('redoUnavailable'))
     } catch (failure) { if (attempt === generation.current) setError(String(failure)) }
     finally { if (attempt === generation.current) { busy.current = false; setPhase('ready') } }
@@ -52,6 +54,7 @@ export function RedoAction({ redoSelection: selection, onRedoPreview, onRedoConf
       if (attempt !== generation.current) return
       setPreview(null); selection.close()
       if (reply.ok) setResult({ message: reply.message ?? t('redoDone'), child: reply.child })
+      else if (reply.errorCode === 'no-restore') setNoRestore(true)
       else setError(reply.error ?? t('redoUnavailable'))
     } catch (failure) { if (attempt === generation.current) { setPreview(null); setError(String(failure)) } }
     finally { if (attempt === generation.current) { busy.current = false; setPhase('ready') } }
@@ -61,8 +64,9 @@ export function RedoAction({ redoSelection: selection, onRedoPreview, onRedoConf
       <button type="button" className={css.action} aria-label={t('undo')} disabled={phase !== 'ready'} onClick={() => { void load() }}><IconRefreshOutline16 size={14} /></button>
     </Tooltip>
     <dialog ref={dialog} className={css.dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); close() }}>
-      <h2 id={titleId}>{t('redoTitle')}</h2>
-      {result === null && <p>{t('redoExplanation')}</p>}
+      <h2 id={titleId}>{t(noRestore ? 'redoNoRestore' : 'redoTitle')}</h2>
+      {noRestore && <p role="status">{t('redoNoRestoreDetail')}</p>}
+      {preview !== null && <p>{t('redoExplanation')}</p>}
       {phase === 'loading' && <p role="status">{t('previewLoading')}</p>}
       {preview !== null && <>
         <p>{t('previewCounts', { written: String(preview.changes.filter(change => change.action === 'write').length), deleted: String(preview.changes.filter(change => change.action === 'delete').length) })}</p>
@@ -75,9 +79,9 @@ export function RedoAction({ redoSelection: selection, onRedoPreview, onRedoConf
       {result !== null && <pre className={css.report}>{result.message}</pre>}
       {error !== null && <p className={css.failure} role="alert">{error}</p>}
       <div className={css.buttons}>
-        <button type="button" disabled={phase === 'confirming'} onClick={close}>{t(result === null ? 'cancel' : 'close')}</button>
+        <button type="button" disabled={phase === 'confirming'} onClick={close}>{t(result === null && !noRestore ? 'cancel' : 'close')}</button>
         {error !== null && <button type="button" disabled={phase !== 'ready'} onClick={() => { void load() }}>{t('previewRetry')}</button>}
-        {result === null && <button type="button" disabled={preview === null || phase !== 'ready'} onClick={() => { void confirm() }}>{t(phase === 'confirming' ? 'redoWorking' : 'redoConfirm')}</button>}
+        {result === null && !noRestore && <button type="button" disabled={preview === null || phase !== 'ready'} onClick={() => { void confirm() }}>{t(phase === 'confirming' ? 'redoWorking' : 'redoConfirm')}</button>}
         {result?.child !== undefined && <button type="button" onClick={() => { const child = result.child; close(); if (child !== undefined) onOpenSession(child) }}>{t('openOriginal')}</button>}
       </div>
     </dialog>
