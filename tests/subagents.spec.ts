@@ -17,6 +17,7 @@ import type { SubagentCarryStore } from '../src/subagents.ts'
 
 const CATALOG = 'subagent/catalog'
 const DESCRIPTOR = 'subagent/descriptor'
+const END_SEED = 'session/end-seed'
 
 /** One deterministic epoch base for every fixture timestamp. */
 const T0 = 1_700_000_000_000
@@ -236,13 +237,22 @@ describe('carrySubagents', () => {
       createdAt: child.header.createdAt,
       cwd: 'E:\\videos',
       parentSession: branch.header.id,
-      isSeeded: false,
+      isSeeded: true,
       origin: 'subagent',
       delegationDepth: 1,
       agentPreset: 'standard',
     })
-    expect(clone.inheritedEventCount).toBe(0)
-    expect(clone.events).toEqual(child.events)
+    // The copied log is the clone's inherited prefix, closed by the cut
+    // marker and reopened with the child's descriptor — the shape a seeded
+    // child of the harness's own has, so every fold of the clone's history
+    // starts at the cut.
+    expect(clone.inheritedEventCount).toBe(child.events.length)
+    expect(clone.events.slice(0, child.events.length)).toEqual(child.events)
+    const suffix = (clone.events as readonly RawEvent[]).slice(child.events.length)
+    expect(suffix.map(event => event.type)).toEqual([END_SEED, DESCRIPTOR])
+    expect(suffix[0]!.seq).toBe(child.events.length)
+    expect(suffix[0]!.data).toEqual({ inherited: true })
+    expect(suffix[1]!.data).toEqual(descriptor('continuable', 'translate the subtitles'))
     expect(backend.writes.flushed).toBe(1)
     // One close for the child's read handle, one for the clone's write handle.
     expect(backend.writes.closed).toBe(2)
@@ -290,7 +300,10 @@ describe('carrySubagents', () => {
 
     expect(carried).toBe(1)
     expect(backend.writes.created).toHaveLength(1)
-    expect(backend.writes.created[0]!.events).toEqual(newer.events)
+    const clone = backend.writes.created[0]!
+    expect(clone.events.slice(0, newer.events.length)).toEqual(newer.events)
+    // No descriptor lives in the child's own suffix, so none is re-anchored.
+    expect((clone.events as readonly RawEvent[]).slice(newer.events.length).map(event => event.type)).toEqual([END_SEED])
   })
 
   it('skips a lineage stamp the branch already carries in its own suffix', async () => {
@@ -369,7 +382,8 @@ describe('carrySubagents', () => {
     expect(carried).toBe(1)
     expect(backend.writes.created).toHaveLength(1)
     expect(backend.writes.created[0]!.header.parentSession).toBe(branch.header.id)
-    expect(backend.writes.created[0]!.events).toEqual(inside.events)
+    expect(backend.writes.created[0]!.events.slice(0, inside.events.length)).toEqual(inside.events)
+    expect((backend.writes.created[0]!.events as readonly RawEvent[]).slice(inside.events.length).map(event => event.type)).toEqual([END_SEED])
     expect(factsOf(branch.snapshotEvents())).toHaveLength(1)
   })
 
@@ -395,7 +409,14 @@ describe('carrySubagents', () => {
 
     expect(carried).toBe(1)
     expect(backend.writes.created).toHaveLength(1)
-    expect(backend.writes.created[0]!.events).toEqual(child.events)
+    // The seeded header and the cut marker are the clone's storage shape,
+    // not catalog vocabulary: the older generation gets them too, with its
+    // child's descriptor re-anchored past the cut.
+    const clone = backend.writes.created[0]!
+    expect(clone.header.isSeeded).toBe(true)
+    expect(clone.events.slice(0, child.events.length)).toEqual(child.events)
+    expect((clone.events as readonly RawEvent[]).slice(child.events.length).map(event => event.type)).toEqual([END_SEED, DESCRIPTOR])
+    expect((clone.events as readonly RawEvent[]).at(-1)!.data).toEqual(descriptor('one-shot'))
     expect(branch.snapshotEvents()).toEqual(before)
   })
 
@@ -483,19 +504,31 @@ describe('carrySubagents', () => {
     const childClone = backend.writes.created[1]!
     expect(childClone.header.parentSession).toBe(branch.header.id)
     expect(grandClone.header.parentSession).toBe(childClone.header.id)
-    expect(grandClone.events).toEqual(grandchild.events)
-    // The clone keeps the child's log verbatim and names the grandchild after it.
+    expect(grandClone.events.slice(0, grandchild.events.length)).toEqual(grandchild.events)
+    expect((grandClone.events as readonly RawEvent[]).slice(grandchild.events.length).map(event => event.type)).toEqual([END_SEED, DESCRIPTOR])
+    // The clone keeps the child's log as its inherited prefix and opens its
+    // own suffix the way a seeded child's does: cut marker, the child's
+    // descriptor re-anchored, then the descendants carried under it.
+    expect(childClone.inheritedEventCount).toBe(child.events.length)
     expect(childClone.events.slice(0, child.events.length)).toEqual(child.events)
-    const appended = childClone.events.at(-1)!
-    expect(appended.type).toBe(CATALOG)
-    expect(appended.seq).toBe(child.events.length)
-    expect(appended.data).toEqual({
+    const suffix = (childClone.events as readonly RawEvent[]).slice(child.events.length)
+    expect(suffix.map(event => event.type)).toEqual([END_SEED, DESCRIPTOR, CATALOG])
+    expect(suffix[0]!.data).toEqual({ inherited: true })
+    expect(suffix[1]!.data).toEqual(descriptor('continuable', 'outer work'))
+    expect(suffix[2]!.seq).toBe(child.events.length + 2)
+    expect(suffix[2]!.data).toEqual({
       version: 0,
       childId: grandClone.header.id,
       childCreatedAt: grandchild.header.createdAt,
       mode: 'continuable',
       label: 'deep work',
     })
+    // What the cut exists for: folding only the clone's own suffix — the
+    // discipline every catalog and continuation fold uses — sees the carried
+    // grandchild, while the child's original fact naming the pre-rewind
+    // grandchild stays closed inside the inherited prefix.
+    const own = (childClone.events as readonly RawEvent[]).filter(event => event.seq >= childClone.inheritedEventCount)
+    expect(factsOf(own as unknown as readonly SessionEvent[]).map(payload => payload['childId'])).toEqual([grandClone.header.id])
     expect(factsOf(branch.snapshotEvents()).at(-1)).toMatchObject({ childId: childClone.header.id, mode: 'continuable', label: 'outer work' })
   })
 
@@ -537,7 +570,7 @@ describe('carrySubagents', () => {
     expect(warnings[1]).toContain('unreadable-child')
   })
 
-  it('carries through the older backend generation, seeded cuts included', async () => {
+  it('carries through the older backend generation, re-marking a seeded cut', async () => {
     const source = live('source-root')
     const child: StoredSession = {
       header: { ...childHeader('child-1', 'source-root', T0 + 100), isSeeded: true },
@@ -564,8 +597,14 @@ describe('carrySubagents', () => {
     expect(carried).toBe(1)
     expect(backend.writes.reads).toContain('child-1')
     expect(backend.writes.created).toHaveLength(1)
-    expect(backend.writes.created[0]!.inheritedEventCount).toBe(2)
-    expect(backend.writes.created[0]!.events).toEqual(child.events)
+    // The clone's cut spans the whole copied log — the child's own cut
+    // included — and the descriptor it re-anchors is the one the child's own
+    // suffix folds.
+    const clone = backend.writes.created[0]!
+    expect(clone.inheritedEventCount).toBe(child.events.length)
+    expect(clone.events.slice(0, child.events.length)).toEqual(child.events)
+    expect((clone.events as readonly RawEvent[]).slice(child.events.length).map(event => event.type)).toEqual([END_SEED, DESCRIPTOR])
+    expect((clone.events as readonly RawEvent[]).at(-1)!.data).toEqual(descriptor('continuable', 'seeded child'))
     expect(factsOf(branch.snapshotEvents()).slice(factsOf(seed).length)).toHaveLength(1)
   })
 

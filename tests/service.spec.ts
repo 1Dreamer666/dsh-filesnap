@@ -475,7 +475,11 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(clone.header.parentSession).toBe(branch.id)
     expect(clone.header.origin).toBe('subagent')
     expect(clone.header.createdAt).toBe(child.header.createdAt)
-    expect(clone.events).toEqual(child.snapshotEvents())
+    // The copied log becomes the clone's inherited prefix, closed by the
+    // cut marker both generations read; no catalog fact follows, because
+    // this runtime composes no catalog vocabulary.
+    expect(clone.events.slice(0, child.snapshotEvents().length)).toEqual(child.snapshotEvents())
+    expect(clone.events.slice(child.snapshotEvents().length).map(event => event.type)).toEqual(['session/end-seed'])
     expect(branch.snapshotEvents()).toEqual(before)
   })
 

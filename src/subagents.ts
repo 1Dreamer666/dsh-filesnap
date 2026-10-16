@@ -11,7 +11,12 @@
  * This module walks the branch's inherited prefix, resolves every child it
  * names, and re-establishes each one under the branch as a clone: a fresh
  * session whose header keeps the child's identity fields but points at the
- * branch, and whose log is the child's full stored log, written verbatim.
+ * branch, and whose log copies the child's full stored log as an inherited
+ * prefix. That prefix is closed exactly the way the harness closes its own
+ * seeded children — a seeded header, an inherited-cut marker at the
+ * boundary, then the child's descriptor re-anchored inside the clone's own
+ * suffix — so the clone's descriptor, catalog, and continuation folds all
+ * start where its inherited history ends, not at the copied log's start.
  * The clone is what the branch can then show and continue.
  *
  * Two runtime generations are spanned, because this plugin's supported
@@ -48,6 +53,9 @@ const CATALOG_EVENT_TYPE = 'subagent/catalog'
 
 /** The child descriptor event type both generations write. */
 const DESCRIPTOR_EVENT_TYPE = 'subagent/descriptor'
+
+/** The lifecycle event that closes a seeded session's inherited prefix. */
+const END_SEED_EVENT_TYPE = 'session/end-seed'
 
 /** The descriptor format the continuation machinery folds; older versions are not resumable. */
 const DESCRIPTOR_VERSION = 3
@@ -306,10 +314,14 @@ function stampOf(header: SessionHeader): string {
  *
  * Descendants are cloned before the clone that will name them is written,
  * because a clone's own children are named from inside its log: the fresh
- * grandchild facts are appended to the child's copied log at its end, with
- * the same contraction discipline the branch itself gets. A child already
- * seen in this carry is skipped rather than revisited, so a corrupt lineage
- * cannot recurse forever.
+ * grandchild facts close the clone's own suffix, with the same contraction
+ * discipline the branch itself gets. That suffix is opened the way the
+ * harness opens a seeded child of its own — an inherited-cut marker at the
+ * boundary, then the child's descriptor re-anchored inside the suffix —
+ * because every fold of the clone's own history (catalog, descriptor,
+ * continuation) starts at the cut, not at the copied log's start. A child
+ * already seen in this carry is skipped rather than revisited, so a corrupt
+ * lineage cannot recurse forever.
  *
  * @param input - the child, the parent it is re-attached to, and the carry context.
  * @returns the clone's identity and fresh fact payload, or `undefined` when it was already seen.
@@ -323,18 +335,19 @@ async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
   const saved = await readLog(store, candidate.childId, signal)
   const cloneId = brandSessionId(randomUUID())
   const descriptor = foldDescriptor(saved.events, saved.inheritedEventCount)
+  const inheritedDescriptor = descriptorPayloadOf(saved.events, saved.inheritedEventCount)
 
   // The child's own suffix holds the facts of the children it spawned —
   // including, from an earlier carry, a previous generation of clones.
   // Keeping the last per stamp extends the newest lineage rather than an
   // original that is already represented.
   const own = saved.events.filter(event => event.seq >= saved.inheritedEventCount)
-  const appended: RawEvent[] = []
+  const payloads: Record<string, unknown>[] = []
   for (const descendant of await resolve(store, entriesIn(own), signal, warn)) {
     try {
       const grand = await cloneChild({ store, candidate: descendant, parentId: cloneId, writable, seen, warn, signal })
       if (grand === undefined || !writable) continue
-      appended.push(factEvent(saved.events.length + appended.length, grand.payload))
+      payloads.push(grand.payload)
     } catch (error) {
       warn(`subagent "${descendant.childId}" was not carried: ${String(error)}`)
     }
@@ -347,18 +360,27 @@ async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
     createdAt: lineage.createdAt,
     ...lineage.cwd === undefined ? {} : { cwd: lineage.cwd },
     parentSession: parentId,
-    isSeeded: lineage.isSeeded,
+    isSeeded: true,
     origin: 'subagent',
     ...lineage.delegationDepth === undefined ? {} : { delegationDepth: lineage.delegationDepth },
     ...lineage.agentPreset === undefined ? {} : { agentPreset: lineage.agentPreset },
   }
-  const batch = [...saved.events, ...appended] as unknown as readonly SessionEvent[]
+
+  // The copied log is the clone's inherited prefix; the clone's own suffix
+  // follows it in the harness's seeded-child shape.
+  const cut = saved.events.length
+  const suffix: RawEvent[] = [sessionEvent(END_SEED_EVENT_TYPE, cut, { inherited: true })]
+  if (inheritedDescriptor !== undefined) {
+    suffix.push(sessionEvent(DESCRIPTOR_EVENT_TYPE, cut + suffix.length, inheritedDescriptor))
+  }
+  for (const payload of payloads) suffix.push(factEvent(cut + suffix.length, payload))
+  const batch = [...saved.events, ...suffix] as unknown as readonly SessionEvent[]
 
   if (typeof store.open === 'function') {
     if (store.create === undefined) throw new Error('the persistence backend exposes no create')
     const handle = await store.create(header, {
       ...signal === undefined ? {} : { signal },
-      inheritedEventCount: SessionLogOffset(saved.inheritedEventCount),
+      inheritedEventCount: SessionLogOffset(cut),
     })
     try {
       if (handle.append === undefined) throw new Error(`the write handle of session "${cloneId}" exposes no append`)
@@ -370,7 +392,7 @@ async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
   } else {
     const legacyCreate = store.create as unknown as (header: SessionHeader, inheritedEventCount: SessionLogOffset) => Promise<unknown>
     if (typeof store.append !== 'function') throw new Error('the persistence backend exposes no append')
-    await legacyCreate.call(store, header, SessionLogOffset(saved.inheritedEventCount))
+    await legacyCreate.call(store, header, SessionLogOffset(cut))
     await store.append(cloneId, batch)
   }
 
@@ -431,6 +453,27 @@ function foldDescriptor(events: readonly RawEvent[], inheritedEventCount: number
     if (mode === 'one-shot') return { mode, ...typeof label === 'string' ? { label } : {} }
     if (mode === 'continuable' && typeof label === 'string') return { mode, label }
     return undefined
+  }
+  return undefined
+}
+
+/**
+ * The raw payload of the first descriptor in a child's own suffix.
+ *
+ * A clone re-anchors this payload past its inherited cut, because the
+ * continuation machinery folds a child's descriptor from its own suffix
+ * only. The payload is copied verbatim: whatever the original folded to —
+ * a supported descriptor, an older format, a malformed one — the clone
+ * folds to the same.
+ *
+ * @param events - the child's complete log.
+ * @param inheritedEventCount - the child's own fork cut.
+ * @returns the descriptor payload, or `undefined` when the suffix has none.
+ */
+function descriptorPayloadOf(events: readonly RawEvent[], inheritedEventCount: number): unknown {
+  for (const event of events) {
+    if (event.seq < inheritedEventCount) continue
+    if (event.type === DESCRIPTOR_EVENT_TYPE) return event.data
   }
   return undefined
 }
@@ -520,9 +563,14 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
+/** One freshly minted plugin-owned event for a cold-written clone log. */
+function sessionEvent(type: string, seq: number, data: unknown): RawEvent {
+  return { type, seq: SessionSeq(seq), time: Date.now(), data }
+}
+
 /** One freshly minted catalog event for a cold-written clone log. */
 function factEvent(seq: number, payload: Record<string, unknown>): RawEvent {
-  return { type: CATALOG_EVENT_TYPE, seq: SessionSeq(seq), time: Date.now(), data: payload }
+  return sessionEvent(CATALOG_EVENT_TYPE, seq, payload)
 }
 
 /** Append one catalog fact to the live branch, through the widened face plugin-owned events use. */
