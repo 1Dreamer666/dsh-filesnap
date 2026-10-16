@@ -13,6 +13,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import { registerCommands } from '../src/commands.ts'
 import type { CommandInvocation, CommandResult, CommandRuntime } from '@deepseek-ai/dsh-commands'
 import { resolveConfig } from '../src/config.ts'
@@ -411,6 +412,71 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
 
     expect(session.snapshotEvents().some(event => event.type.startsWith('filesnap/'))).toBe(false)
 
+  })
+
+  it("carries the rewound session's subagents into the caller's live branch", async () => {
+    const file = join(workspace.path, 'a.txt')
+    const session = liveSessionAt(live, 'session-a', workspace.path)
+    const agent = agentOn(session)
+    writeFileSync(file, 'original\n')
+    await runTurn(session, 1, 'set it up', async () => { await service.capture(agent, 1) })
+    const afterFirstTurn = session.snapshotEvents().length
+    // A child spawned inside the retained turn: stored under the session the
+    // rewind leaves, created no later than the retained history's last event.
+    const child = Session.create(SessionId('subagent-child'), undefined, {
+      version: SESSION_FORMAT_VERSION,
+      isSeeded: false,
+      id: SessionId('subagent-child'),
+      createdAt: session.snapshotEvents().at(-1)!.time,
+      cwd: workspace.path,
+      parentSession: session.id,
+      origin: 'subagent',
+      delegationDepth: 1,
+    })
+    child.append('turn/start', { turn: 1 })
+    const created: { header: SessionHeader; events: readonly SessionEvent[] }[] = []
+    const records = new Map<string, { header: SessionHeader; events: readonly SessionEvent[] }>([
+      [String(child.id), { header: child.header, events: child.snapshotEvents() }],
+    ])
+    // The 0.1.2 persistence surface: raw header lists, `inspect`, and
+    // id-addressed writes. The linked harness composes no catalog vocabulary,
+    // so the carry may clone but must not append events to this session.
+    ctx.provide('sessionPersistence', {
+      list: async () => [...records.values()].map(record => record.header),
+      inspect: async (id: string) => {
+        const record = records.get(id)
+        if (record === undefined) throw new Error(`session "${id}" is not stored`)
+        return { meta: record.header, events: record.events, inheritedEventCount: 0 }
+      },
+      create: async (header: SessionHeader) => {
+        const record = { header, events: [] as readonly SessionEvent[] }
+        records.set(String(header.id), record)
+        created.push(record)
+      },
+      append: async (id: string, events: readonly SessionEvent[]) => {
+        const record = records.get(id)
+        if (record === undefined) throw new Error(`session "${id}" is not stored`)
+        record.events = events
+      },
+    } as unknown as Context['sessionPersistence'])
+    await runTurn(session, 2, 'break it', async () => { await service.capture(agent, 2) })
+
+    const seed = session.snapshotEvents().slice(0, afterFirstTurn)
+    const branch = Session.create(SessionId('branch'), seed, { ...session.header, id: SessionId('branch'), parentSession: session.id, isSeeded: true }, SessionLogOffset(seed.length))
+    live.set('branch', branch)
+    const before = branch.snapshotEvents()
+
+    const outcome = await service.rewind(agent, '2', { kind: 'into', session: branch.id })
+    expect(outcome.ok).toBe(true)
+
+    expect(created).toHaveLength(1)
+    const clone = created[0]!
+    expect(clone.header.id).not.toBe(child.id)
+    expect(clone.header.parentSession).toBe(branch.id)
+    expect(clone.header.origin).toBe('subagent')
+    expect(clone.header.createdAt).toBe(child.header.createdAt)
+    expect(clone.events).toEqual(child.snapshotEvents())
+    expect(branch.snapshotEvents()).toEqual(before)
   })
 
   it('cuts the fork at the end of the previous turn, not inside the one being rewound', async () => {

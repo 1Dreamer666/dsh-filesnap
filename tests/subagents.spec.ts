@@ -1,0 +1,587 @@
+/**
+ * Carrying a rewound session's children into the branch the rewind forked into.
+ *
+ * The module is driven directly, with real `Session` objects and fake
+ * persistence in both backend generations. The harness linked for tests is
+ * the older one — its event vocabulary has no `subagent/catalog` — so the
+ * no-catalog-write behaviour a deployment under it needs is a first-class
+ * case here, not a skipped one. The newer generation is exercised by passing
+ * the vocabulary it composes.
+ */
+
+import { describe, expect, it } from 'vitest'
+import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
+import { carrySubagents } from '../src/subagents.ts'
+import type { SubagentCarryStore } from '../src/subagents.ts'
+
+const CATALOG = 'subagent/catalog'
+const DESCRIPTOR = 'subagent/descriptor'
+
+/** One deterministic epoch base for every fixture timestamp. */
+const T0 = 1_700_000_000_000
+
+/** The vocabulary the newer runtime composes. */
+const CURRENT_VOCABULARY: ReadonlySet<string> = new Set([CATALOG, DESCRIPTOR])
+
+/** The vocabulary a runtime predating the catalog composes. */
+const LEGACY_VOCABULARY: ReadonlySet<string> = new Set([DESCRIPTOR])
+
+/** One event envelope with the fields the harness validates; `seq` is the position. */
+function log(...specs: readonly { type: string; data?: unknown }[]): SessionEvent[] {
+  return specs.map((spec, index) => ({
+    type: spec.type,
+    seq: SessionSeq(index),
+    time: T0 + index,
+    data: spec.data ?? {},
+  })) as unknown as SessionEvent[]
+}
+
+/** One catalog fact payload, shaped exactly as the harness writes it. */
+function fact(childId: string, createdAt: number, mode: 'one-shot' | 'continuable' | 'unknown', label?: string): Record<string, unknown> {
+  if (mode === 'unknown') return { version: 1, childId, childCreatedAt: createdAt, mode }
+  return { version: 0, childId, childCreatedAt: createdAt, mode, ...label === undefined ? {} : { label } }
+}
+
+/** One child descriptor payload, shaped as the establishing provider writes it. */
+function descriptor(mode: 'one-shot' | 'continuable', label?: string): Record<string, unknown> {
+  return { version: 3, mode, provider: 'spawn', ...label === undefined ? {} : { label } }
+}
+
+/** A stored child header carrying every lineage field a clone copies. */
+function childHeader(id: string, parent: string, createdAt: number): SessionHeader {
+  return {
+    version: SESSION_FORMAT_VERSION,
+    id: SessionId(id),
+    createdAt,
+    cwd: 'E:\\videos',
+    parentSession: SessionId(parent),
+    isSeeded: false,
+    origin: 'subagent',
+    delegationDepth: 1,
+    agentPreset: 'standard',
+  }
+}
+
+/** A live source session. */
+function live(id: string): Session {
+  const header: SessionHeader = {
+    version: SESSION_FORMAT_VERSION,
+    id: SessionId(id),
+    createdAt: T0,
+    cwd: 'E:\\videos',
+    isSeeded: false,
+    agentPreset: 'standard',
+  }
+  return Session.create(SessionId(id), undefined, header)
+}
+
+/** The branch a rewind forked: a live session seeded with the retained history. */
+function branchOf(id: string, source: Session, seed: readonly SessionEvent[]): Session {
+  const header: SessionHeader = {
+    ...source.header,
+    id: SessionId(id),
+    parentSession: source.header.id,
+    isSeeded: true,
+    createdAt: T0 + 1000,
+  }
+  return Session.create(SessionId(id), seed, header, SessionLogOffset(seed.length))
+}
+
+/** The envelope fields this suite reads off a log without narrowing the union. */
+interface RawEvent {
+  readonly type: string
+  readonly seq: number
+  readonly data: unknown
+}
+
+/** The catalog fact payloads in one log, in order. */
+function factsOf(events: readonly SessionEvent[]): Record<string, unknown>[] {
+  return (events as readonly RawEvent[]).filter(event => event.type === CATALOG).map(event => event.data as Record<string, unknown>)
+}
+
+/** Append one catalog event through the widened face the plugin uses for plugin-owned events. */
+function appendFact(session: Session, data: Record<string, unknown>): void {
+  (session as unknown as { append(type: string, data: unknown): unknown }).append(CATALOG, data)
+}
+
+/** One session as a backend stores it. */
+interface StoredSession {
+  header: SessionHeader
+  events: readonly SessionEvent[]
+  inheritedEventCount: number
+}
+
+/** What a fake backend recorded while the carry ran. */
+interface RecordedWrites {
+  /** Records created through `create`; `events` is filled by the clone's append. */
+  created: StoredSession[]
+  /** Session ids read through `open`/`inspect`. */
+  reads: string[]
+  flushed: number
+  closed: number
+}
+
+/** The 0.2.0 backend: header stats, read handles, and write handles handed out by `create`. */
+function currentStore(seed: readonly StoredSession[]) {
+  const stored = new Map(seed.map(session => [session.header.id as string, session]))
+  const writes: RecordedWrites = { created: [], reads: [], flushed: 0, closed: 0 }
+  const broken = new Set<string>()
+  const store: SubagentCarryStore = {
+    async stat(id) {
+      const found = stored.get(id as string)
+      return found === undefined ? undefined : { header: found.header }
+    },
+    async list() {
+      return [...stored.values()].map(session => ({ header: session.header }))
+    },
+    async open(id) {
+      const found = stored.get(id as string)
+      if (found === undefined) throw new Error(`session "${id}" is not stored`)
+      if (broken.has(id as string)) throw new Error(`session "${id}" cannot be opened`)
+      writes.reads.push(id as string)
+      return {
+        inheritedEventCount: found.inheritedEventCount,
+        async read() { return { events: found.events } },
+        async close() { writes.closed += 1 },
+      }
+    },
+    async create(header, options) {
+      if (stored.has(header.id as string)) throw new Error(`session "${header.id}" already exists`)
+      const record: StoredSession = { header, events: [], inheritedEventCount: options?.inheritedEventCount ?? 0 }
+      stored.set(header.id as string, record)
+      writes.created.push(record)
+      return {
+        inheritedEventCount: record.inheritedEventCount,
+        async append(events) { record.events = events },
+        async flush() { writes.flushed += 1 },
+        async close() { writes.closed += 1 },
+      }
+    },
+  }
+  return { store, stored, writes, broken }
+}
+
+/** The 0.1.2 backend: raw header lists, `inspect`, and id-addressed `create`/`append`. */
+function legacyStore(seed: readonly StoredSession[]) {
+  const stored = new Map(seed.map(session => [session.header.id as string, session]))
+  const writes: RecordedWrites = { created: [], reads: [], flushed: 0, closed: 0 }
+  const broken = new Set<string>()
+  // The 0.1.2 create signature and return value are the older generation's,
+  // one cast away from the seam interface — the same cast the service makes.
+  const store = {
+    async list() {
+      return [...stored.values()].map(session => session.header)
+    },
+    async inspect(id: string) {
+      const found = stored.get(id as string)
+      if (found === undefined) throw new Error(`session "${id}" is not stored`)
+      if (broken.has(id as string)) throw new Error(`session "${id}" cannot be inspected`)
+      writes.reads.push(id as string)
+      return { meta: found.header, events: found.events, inheritedEventCount: found.inheritedEventCount }
+    },
+    async create(header: SessionHeader, inheritedEventCount?: number) {
+      if (stored.has(header.id as string)) throw new Error(`session "${header.id}" already exists`)
+      const record: StoredSession = { header, events: [], inheritedEventCount: inheritedEventCount ?? 0 }
+      stored.set(header.id as string, record)
+      writes.created.push(record)
+    },
+    async append(id: string, events: readonly SessionEvent[]) {
+      const found = stored.get(id as string)
+      if (found === undefined) throw new Error(`session "${id}" is not stored`)
+      found.events = events
+    },
+  }
+  return { store: store as unknown as SubagentCarryStore, stored, writes, broken }
+}
+
+describe('carrySubagents', () => {
+  it('clones a named child under the branch and appends the fact that makes it visible', async () => {
+    const source = live('source-root')
+    const child: StoredSession = {
+      header: childHeader('cadb60c2-7b75-4da6-a0d7-c6091d3622f7', 'source-root', T0 + 100),
+      events: log(
+        { type: DESCRIPTOR, data: descriptor('continuable', 'translate the subtitles') },
+        { type: 'turn/start', data: { turn: 1 } },
+        { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+      ),
+      inheritedEventCount: 0,
+    }
+    const seed = log(
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'turn/start', data: { turn: 2 } },
+      { type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'stale label') },
+      { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([child])
+    const warnings: string[] = []
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: message => { warnings.push(message) },
+    })
+
+    expect(warnings).toEqual([])
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(1)
+    const clone = backend.writes.created[0]!
+    expect(clone.header.id).not.toBe(child.header.id)
+    expect(clone.header.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u)
+    expect(clone.header).toMatchObject({
+      version: SESSION_FORMAT_VERSION,
+      createdAt: child.header.createdAt,
+      cwd: 'E:\\videos',
+      parentSession: branch.header.id,
+      isSeeded: false,
+      origin: 'subagent',
+      delegationDepth: 1,
+      agentPreset: 'standard',
+    })
+    expect(clone.inheritedEventCount).toBe(0)
+    expect(clone.events).toEqual(child.events)
+    expect(backend.writes.flushed).toBe(1)
+    // One close for the child's read handle, one for the clone's write handle.
+    expect(backend.writes.closed).toBe(2)
+
+    const appended = branch.snapshotEvents()
+    const last = appended.at(-1)!
+    expect(last.type).toBe(CATALOG)
+    expect(last.seq).toBe(seed.length + 1)
+    expect(last.data).toEqual({
+      version: 0,
+      childId: clone.header.id,
+      childCreatedAt: child.header.createdAt,
+      mode: 'continuable',
+      // The child's own descriptor is authoritative, not the stale fact label.
+      label: 'translate the subtitles',
+    })
+  })
+
+  it('keeps the last fact per lineage stamp', async () => {
+    const source = live('source-root')
+    const older: StoredSession = {
+      header: childHeader('older-child', 'source-root', T0 + 100),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const newer: StoredSession = {
+      header: childHeader('newer-child', 'source-root', T0 + 100),
+      events: log({ type: 'turn/start', data: { turn: 2 } }),
+      inheritedEventCount: 0,
+    }
+    const seed = log(
+      { type: CATALOG, data: fact(older.header.id, older.header.createdAt, 'one-shot') },
+      { type: CATALOG, data: fact(newer.header.id, newer.header.createdAt, 'one-shot') },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([older, newer])
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(1)
+    expect(backend.writes.created[0]!.events).toEqual(newer.events)
+  })
+
+  it('skips a lineage stamp the branch already carries in its own suffix', async () => {
+    const source = live('source-root')
+    const original: StoredSession = {
+      header: childHeader('child-x', 'source-root', T0 + 100),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const carried: StoredSession = {
+      header: childHeader('child-x-clone', 'branch-1', T0 + 100),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const seed = log({ type: CATALOG, data: fact(original.header.id, original.header.createdAt, 'one-shot') })
+    const branch = branchOf('branch-1', source, seed)
+    // A previous carry into this very branch left its own fact naming the clone.
+    appendFact(branch, fact(carried.header.id, carried.header.createdAt, 'one-shot'))
+    const backend = currentStore([original, carried])
+
+    const carriedCount = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carriedCount).toBe(0)
+    expect(backend.writes.created).toEqual([])
+    // The prefix fact and the branch's own fact, and nothing new.
+    expect(factsOf(branch.snapshotEvents())).toHaveLength(2)
+  })
+
+  it('falls back to stored lineage when the prefix names no facts', async () => {
+    const source = live('source-root')
+    const seed = log(
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const inside: StoredSession = {
+      header: childHeader('inside-child', 'source-root', T0 + 1),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const after: StoredSession = {
+      header: childHeader('after-child', 'source-root', T0 + 2),
+      events: log({ type: 'turn/start', data: { turn: 2 } }),
+      inheritedEventCount: 0,
+    }
+    // A sibling fork of the source: its parent matches, but it is not a child.
+    const plain: StoredSession = {
+      header: {
+        version: SESSION_FORMAT_VERSION,
+        id: SessionId('plain-child'),
+        createdAt: T0,
+        cwd: 'E:\\videos',
+        parentSession: source.header.id,
+        isSeeded: false,
+        agentPreset: 'standard',
+      },
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const backend = legacyStore([inside, after, plain])
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(1)
+    expect(backend.writes.created[0]!.header.parentSession).toBe(branch.header.id)
+    expect(backend.writes.created[0]!.events).toEqual(inside.events)
+    expect(factsOf(branch.snapshotEvents())).toHaveLength(1)
+  })
+
+  it('clones without writing catalog facts when the vocabulary lacks the type', async () => {
+    const source = live('source-root')
+    const child: StoredSession = {
+      header: childHeader('child-1', 'source-root', T0 + 100),
+      events: log({ type: DESCRIPTOR, data: descriptor('one-shot') }),
+      inheritedEventCount: 0,
+    }
+    const seed = log({ type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'one-shot') })
+    const branch = branchOf('branch-1', source, seed)
+    const before = branch.snapshotEvents()
+    const backend = legacyStore([child])
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: LEGACY_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(1)
+    expect(backend.writes.created[0]!.events).toEqual(child.events)
+    expect(branch.snapshotEvents()).toEqual(before)
+  })
+
+  it('mirrors the established mode into the fresh fact and falls back to unknown', async () => {
+    const source = live('source-root')
+    const oneShot: StoredSession = {
+      header: childHeader('one-shot-child', 'source-root', T0 + 100),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const viaFact: StoredSession = {
+      header: childHeader('fact-child', 'source-root', T0 + 200),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const unknown: StoredSession = {
+      header: childHeader('unknown-child', 'source-root', T0 + 300),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const descriptorWins: StoredSession = {
+      header: childHeader('descriptor-child', 'source-root', T0 + 400),
+      events: log({ type: DESCRIPTOR, data: descriptor('one-shot', 'from descriptor') }),
+      inheritedEventCount: 0,
+    }
+    const seed = log(
+      { type: CATALOG, data: fact(oneShot.header.id, oneShot.header.createdAt, 'one-shot') },
+      { type: CATALOG, data: fact(viaFact.header.id, viaFact.header.createdAt, 'continuable', 'from fact') },
+      { type: CATALOG, data: fact(unknown.header.id, unknown.header.createdAt, 'unknown') },
+      { type: CATALOG, data: fact(descriptorWins.header.id, descriptorWins.header.createdAt, 'continuable', 'stale') },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([oneShot, viaFact, unknown, descriptorWins])
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carried).toBe(4)
+    const [first, second, third, fourth] = backend.writes.created
+    // The seed carries the original four facts; the clones' facts come after.
+    const fresh = factsOf(branch.snapshotEvents()).slice(factsOf(seed).length)
+    const payload = (index: number) => fresh.at(index)
+    expect(payload(0)).toEqual({ version: 0, childId: first!.header.id, childCreatedAt: T0 + 100, mode: 'one-shot' })
+    expect(payload(1)).toEqual({ version: 0, childId: second!.header.id, childCreatedAt: T0 + 200, mode: 'continuable', label: 'from fact' })
+    expect(payload(2)).toEqual({ version: 1, childId: third!.header.id, childCreatedAt: T0 + 300, mode: 'unknown' })
+    expect(payload(3)).toEqual({ version: 0, childId: fourth!.header.id, childCreatedAt: T0 + 400, mode: 'one-shot', label: 'from descriptor' })
+  })
+
+  it("carries a child's own children into the clone and names them from inside it", async () => {
+    const source = live('source-root')
+    const grandchild: StoredSession = {
+      header: childHeader('grand-1', 'child-1', T0 + 150),
+      events: log({ type: DESCRIPTOR, data: descriptor('continuable', 'deep work') }),
+      inheritedEventCount: 0,
+    }
+    const child: StoredSession = {
+      header: childHeader('child-1', 'source-root', T0 + 100),
+      events: log(
+        { type: DESCRIPTOR, data: descriptor('continuable', 'outer work') },
+        { type: 'turn/start', data: { turn: 1 } },
+        { type: CATALOG, data: fact(grandchild.header.id, grandchild.header.createdAt, 'continuable', 'stale') },
+      ),
+      inheritedEventCount: 0,
+    }
+    const seed = log({ type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'outer work') })
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([child, grandchild])
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(2)
+    const grandClone = backend.writes.created[0]!
+    const childClone = backend.writes.created[1]!
+    expect(childClone.header.parentSession).toBe(branch.header.id)
+    expect(grandClone.header.parentSession).toBe(childClone.header.id)
+    expect(grandClone.events).toEqual(grandchild.events)
+    // The clone keeps the child's log verbatim and names the grandchild after it.
+    expect(childClone.events.slice(0, child.events.length)).toEqual(child.events)
+    const appended = childClone.events.at(-1)!
+    expect(appended.type).toBe(CATALOG)
+    expect(appended.seq).toBe(child.events.length)
+    expect(appended.data).toEqual({
+      version: 0,
+      childId: grandClone.header.id,
+      childCreatedAt: grandchild.header.createdAt,
+      mode: 'continuable',
+      label: 'deep work',
+    })
+    expect(factsOf(branch.snapshotEvents()).at(-1)).toMatchObject({ childId: childClone.header.id, mode: 'continuable', label: 'outer work' })
+  })
+
+  it('warns about children that are gone or unreadable and carries the rest', async () => {
+    const source = live('source-root')
+    const alive: StoredSession = {
+      header: childHeader('alive-child', 'source-root', T0 + 100),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const unreadable: StoredSession = {
+      header: childHeader('unreadable-child', 'source-root', T0 + 200),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const seed = log(
+      { type: CATALOG, data: fact('missing-child', T0 + 50, 'one-shot') },
+      { type: CATALOG, data: fact(unreadable.header.id, unreadable.header.createdAt, 'one-shot') },
+      { type: CATALOG, data: fact(alive.header.id, alive.header.createdAt, 'one-shot') },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([alive, unreadable])
+    backend.broken.add('unreadable-child')
+    const warnings: string[] = []
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: message => { warnings.push(message) },
+    })
+
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(1)
+    expect(factsOf(branch.snapshotEvents()).slice(factsOf(seed).length)).toHaveLength(1)
+    expect(warnings).toHaveLength(2)
+    expect(warnings[0]).toContain('missing-child')
+    expect(warnings[1]).toContain('unreadable-child')
+  })
+
+  it('carries through the older backend generation, seeded cuts included', async () => {
+    const source = live('source-root')
+    const child: StoredSession = {
+      header: { ...childHeader('child-1', 'source-root', T0 + 100), isSeeded: true },
+      events: log(
+        { type: 'turn/start', data: { turn: 1 } },
+        { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+        { type: DESCRIPTOR, data: descriptor('continuable', 'seeded child') },
+        { type: 'turn/start', data: { turn: 2 } },
+      ),
+      inheritedEventCount: 2,
+    }
+    const seed = log({ type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'seeded child') })
+    const branch = branchOf('branch-1', source, seed)
+    const backend = legacyStore([child])
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carried).toBe(1)
+    expect(backend.writes.reads).toContain('child-1')
+    expect(backend.writes.created).toHaveLength(1)
+    expect(backend.writes.created[0]!.inheritedEventCount).toBe(2)
+    expect(backend.writes.created[0]!.events).toEqual(child.events)
+    expect(factsOf(branch.snapshotEvents()).slice(factsOf(seed).length)).toHaveLength(1)
+  })
+
+  it('does nothing when there is no backend or nothing was inherited', async () => {
+    const source = live('source-root')
+    const child: StoredSession = {
+      header: childHeader('child-1', 'source-root', T0 + 100),
+      events: log({ type: 'turn/start', data: { turn: 1 } }),
+      inheritedEventCount: 0,
+    }
+    const backend = currentStore([child])
+    // A branch that inherited nothing: there is no retained history to read.
+    const bare = Session.create(SessionId('bare'), undefined, { ...source.header, id: SessionId('bare') })
+
+    expect(await carrySubagents({ branch: bare, source, store: backend.store, vocabulary: CURRENT_VOCABULARY, warn: () => {} })).toBe(0)
+    expect(await carrySubagents({ branch: bare, source, store: undefined, vocabulary: CURRENT_VOCABULARY, warn: () => {} })).toBe(0)
+    expect(backend.writes.created).toEqual([])
+  })
+})

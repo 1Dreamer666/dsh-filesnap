@@ -26,7 +26,8 @@ The `filesnap` projection folds only native structural anchors. Snapshot availab
 2. Obtain user confirmation with a single-use token bound to the session and point, expiring after five minutes.
 3. The browser invokes DSH's `sessions.fork`, preserving deployment preset/workspace composition.
 4. The host rechecks files and ignore rules, restores the point and durably records a named rescue and restores the point. Completion and child redo references commit together.
-5. Open the child and refill the full original prompt only in an empty composer. Partial failures remain explicitly visible in the dialog.
+5. Carry the retained turns' subagents into the child: each is cloned under the branch with its lineage rewritten, so the branch can show it and continue it. A child that cannot be carried only warns.
+6. Open the child and refill the full original prompt only in an empty composer. Partial failures remain explicitly visible in the dialog.
 
 Cancel creates no branch and restores no workspace files. Validation is not a filesystem lock; external edits may race the final write. A refused restore can leave the already-created child in the session list. Headless commands fork through the service and return a child id.
 

@@ -12,7 +12,7 @@ import type { RewindPreview, RedoPreview, CleanupPreview, CleanupOutcome } from 
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import type { Session, SessionEvent, SessionId, SessionHeader } from '@deepseek-ai/dsh-session'
-import { SessionId as brandSessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SessionId as brandSessionId, SessionLogOffset, KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { registerCommands } from './commands.ts'
 import type { FilesnapCli, FilesnapRun } from './cli.ts'
@@ -21,6 +21,8 @@ import { createFilesnapCli, hasNoRestore, eventsOfType, lastEvent, numberField, 
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
 import { mark, activate } from './mark.ts'
 import { foldPoints, selectPoint } from './points.ts'
+import { carrySubagents } from './subagents.ts'
+import type { SubagentCarryStore } from './subagents.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
 import { FALLBACK_COMMAND } from './config.ts'
 import type { FilesnapConfig } from './config.ts'
@@ -253,6 +255,39 @@ export class FilesnapRewind extends Service {
       this.warn(`filesnap: could not retitle session "${session.id}": ${String(error)}`)
       return undefined
     }
+  }
+
+  /**
+   * Carry the rewound session's subagents into the branch its fork created.
+   *
+   * Only the branch can show them: the fork keeps the rewound session's
+   * history as an inherited prefix, but the branching session's own catalog
+   * does not count children established in that prefix, and a continuation is
+   * authorized against a child's durable parent — which is still the
+   * pre-rewind session. The carry clones each retained child under the branch
+   * and names it there; `./subagents.ts` holds the discovery and the two
+   * persistence generations it spans.
+   *
+   * **This never fails the rewind it is attached to.** Per-child failures are
+   * reported through `warn`; a deployment with no live branch — a headless run
+   * or a caller that forked in another process — simply has nothing to carry
+   * into.
+   *
+   * @param agent - the agent standing in the session the rewind left.
+   * @param branchId - the id of the live session the fork landed in.
+   * @param signal - caller cancellation.
+   */
+  private async carryBranchSubagents(agent: Agent, branchId: SessionId, signal?: AbortSignal): Promise<void> {
+    const branch = this.ctx.get('sessions')?.get(branchId)
+    if (branch === undefined) return
+    await carrySubagents({
+      branch,
+      source: agent.session,
+      store: this.ctx.get('sessionPersistence') as unknown as SubagentCarryStore | undefined,
+      vocabulary: KNOWN_SESSION_EVENT_TYPES,
+      warn: message => { this.warn(`filesnap: ${message}`) },
+      ...signal === undefined ? {} : { signal },
+    })
   }
 
   /**
@@ -822,7 +857,12 @@ export class FilesnapRewind extends Service {
     // so mark it where the choice is made. Reversible on purpose — see mark.ts
     // for why this is not an archive.
     const marked = failed.length === 0 ? this.retitle(agent.session, mark) : undefined
-    if (failed.length === 0) this.retitle(this.ctx.get('sessions')?.get(child.value), activate)
+    if (failed.length === 0) {
+      this.retitle(this.ctx.get('sessions')?.get(child.value), activate)
+      // Retained turns spawned subagents against the session being left; the
+      // branch can neither show nor continue them until they are carried.
+      await this.carryBranchSubagents(agent, child.value, signal)
+    }
 
     const promptText = promptForTurn(agent.session, point.turn)
     const outcome: RewindOutcome = {

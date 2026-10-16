@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- 回退后的分支现在携带被保留轮次中派生的子智能体信息：在分支下克隆每个子会话并重写血缘（创建时间、工作目录、预设与深度保持不变），子智能体因此在分支中可见、可继续；不具备 catalog 词汇表的运行时只克隆、不写入其读不懂的事件，单个子会话失败仅告警、回退本身不受影响。
+- A rewound branch now carries the subagents spawned in its retained turns: every child session is cloned under the branch with its lineage rewritten (creation time, workspace, preset and depth preserved), so it is both visible and continuable there. Runtimes without the catalog vocabulary clone without writing events they cannot read, and one child's failure only warns — the rewind itself never fails.
+
 ## 0.4.0
 
 - 新增「设置 → FileSnap → 中断恢复」：预览继续或回滚未完成的回退与 redo，确认时重新检查文件，冲突时停止。
