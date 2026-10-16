@@ -34,7 +34,7 @@ Cancel creates no branch and restores no workspace files. Validation is not a fi
 
 Public slots provide `conversation.chat.assistant-actions`, `conversation.session.header.actions` and `settings.section`. FileSnap Settings hosts interrupted recovery and the versioned migration entry.
 
-`ctx.connection.rpc.handle('/filesnap', …)` uses the browser Connection RPC with the host's Host/Origin fence and authentication. Requests are schema-validated and ordinary rewind operations target an already-open agent; interrupted recovery can resolve cold sessions from its independent record. Buttons never invoke `session.command`, so they produce no `command/run` or `command/done` cards. Manually typed commands retain DSH's standard command path.
+`ctx.connection.rpc.handle('/filesnap', …)` uses the browser Connection RPC with the host's Host/Origin fence and authentication. When the Connection service cannot reach `webServer` while registering a channel — the Desktop app's 0.2.0-rc.2 build — the plugin mounts the same prefix route on `ctx.webServer` itself, with the same admission fence, envelope validation and body cap. Requests are schema-validated and ordinary rewind operations target an already-open agent; interrupted recovery can resolve cold sessions from its independent record. Buttons never invoke `session.command`, so they produce no `command/run` or `command/done` cards. Manually typed commands retain DSH's standard command path.
 
 The snapshot panel shows records, shared content, session snapshot counts and unprotected paths. Cleanup invokes only `gc`, preserving referenced snapshots and undo data without automatically deleting sessions.
 

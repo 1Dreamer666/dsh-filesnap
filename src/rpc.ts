@@ -1,12 +1,12 @@
 /** Independent authenticated UI transport; never dispatches chat commands or appends events. */
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-client-connection'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { z } from 'zod'
 import type { FilesnapRewind } from './service.ts'
 import { redoResult, refusalResult, rewindResult } from './commands.ts'
 import type { RewindResult } from './types.ts'
 import { selectPoint } from './points.ts'
+import { mountUiChannel } from './route.ts'
 import type {} from './migrations.ts'
 import type { UiReply } from './wire.ts'
 
@@ -78,7 +78,7 @@ export function registerRpc(ctx: Context): void {
       if (manager === undefined) throw new Error('Session migration service is not ready.')
       return manager
     }
-    rpcCtx.connection.rpc.handle('/filesnap', async (endpoint, payload, signal) => {
+    mountUiChannel(rpcCtx, async (endpoint, payload, signal) => {
       try {
         if (endpoint === 'recovery-list') { z.object({}).strict().parse(payload); return { ok: true, value: await rpcCtx.filesnap.recovery.list() } }
         if (endpoint === 'recovery-preview') {
