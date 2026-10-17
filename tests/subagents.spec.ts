@@ -28,12 +28,12 @@ const CURRENT_VOCABULARY: ReadonlySet<string> = new Set([CATALOG, DESCRIPTOR])
 /** The vocabulary a runtime predating the catalog composes. */
 const LEGACY_VOCABULARY: ReadonlySet<string> = new Set([DESCRIPTOR])
 
-/** One event envelope with the fields the harness validates; `seq` is the position. */
-function log(...specs: readonly { type: string; data?: unknown }[]): SessionEvent[] {
+/** One event envelope with the fields the harness validates; `seq` is the position, `time` defaults to one tick per event from {@link T0}. */
+function log(...specs: readonly { type: string; data?: unknown; time?: number }[]): SessionEvent[] {
   return specs.map((spec, index) => ({
     type: spec.type,
     seq: SessionSeq(index),
-    time: T0 + index,
+    time: spec.time ?? T0 + index,
     data: spec.data ?? {},
   })) as unknown as SessionEvent[]
 }
@@ -486,7 +486,13 @@ describe('carrySubagents', () => {
       ),
       inheritedEventCount: 0,
     }
-    const seed = log({ type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'outer work') })
+    // The seed runs past the child's events, so the fixture's fork point
+    // keeps the grandchild's fact inside the child's kept log.
+    const seed = log(
+      { type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'outer work') },
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+    )
     const branch = branchOf('branch-1', source, seed)
     const backend = currentStore([child, grandchild])
 
@@ -530,6 +536,151 @@ describe('carrySubagents', () => {
     const own = (childClone.events as readonly RawEvent[]).filter(event => event.seq >= childClone.inheritedEventCount)
     expect(factsOf(own as unknown as readonly SessionEvent[]).map(payload => payload['childId'])).toEqual([grandClone.header.id])
     expect(factsOf(branch.snapshotEvents()).at(-1)).toMatchObject({ childId: childClone.header.id, mode: 'continuable', label: 'outer work' })
+  })
+
+  it('cuts a child at the fork point and leaves a descendant born after it behind', async () => {
+    const source = live('source-root')
+    const grandchild: StoredSession = {
+      header: childHeader('grand-1', 'child-1', T0 + 500),
+      events: log({ type: DESCRIPTOR, data: descriptor('continuable', 'born too late'), time: T0 + 500 }),
+      inheritedEventCount: 0,
+    }
+    const child: StoredSession = {
+      header: childHeader('child-1', 'source-root', T0 + 100),
+      events: log(
+        { type: DESCRIPTOR, data: descriptor('continuable', 'outer work'), time: T0 + 100 },
+        { type: 'turn/start', data: { turn: 1 }, time: T0 + 101 },
+        { type: CATALOG, data: fact(grandchild.header.id, grandchild.header.createdAt, 'continuable', 'stale'), time: T0 + 500 },
+        { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } }, time: T0 + 501 },
+      ),
+      inheritedEventCount: 0,
+    }
+    // The seed's last event is the fork point: it keeps the child's spawn and
+    // the turn it was running, and cuts the grandchild's fact with everything
+    // that followed.
+    const seed = log(
+      { type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'outer work') },
+      { type: 'turn/start', data: { turn: 2 }, time: T0 + 200 },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([child, grandchild])
+    const warnings: string[] = []
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: message => { warnings.push(message) },
+    })
+
+    expect(warnings).toEqual([])
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(1)
+    const clone = backend.writes.created[0]!
+    // The clone's inherited prefix stops at the fork point — mid-turn, since
+    // the turn's end lies beyond it — and the end-seed marker closes it.
+    expect(clone.inheritedEventCount).toBe(2)
+    expect(clone.events.slice(0, 2)).toEqual(child.events.slice(0, 2))
+    expect((clone.events as readonly RawEvent[]).slice(2).map(event => event.type)).toEqual([END_SEED, DESCRIPTOR])
+    // The grandchild was never even read: the fact that names it did not
+    // survive the cut.
+    expect(backend.writes.reads).toEqual(['child-1'])
+    expect(factsOf(branch.snapshotEvents()).slice(factsOf(seed).length)).toEqual([
+      { version: 0, childId: clone.header.id, childCreatedAt: T0 + 100, mode: 'continuable', label: 'outer work' },
+    ])
+  })
+
+  it('cuts a carried descendant at the same fork point, recursively', async () => {
+    const source = live('source-root')
+    const great: StoredSession = {
+      header: childHeader('great-1', 'grand-1', T0 + 600),
+      events: log({ type: DESCRIPTOR, data: descriptor('one-shot'), time: T0 + 600 }),
+      inheritedEventCount: 0,
+    }
+    const grandchild: StoredSession = {
+      header: childHeader('grand-1', 'child-1', T0 + 300),
+      events: log(
+        { type: DESCRIPTOR, data: descriptor('continuable', 'deep work'), time: T0 + 300 },
+        { type: 'turn/start', data: { turn: 1 }, time: T0 + 301 },
+        { type: CATALOG, data: fact(great.header.id, great.header.createdAt, 'one-shot'), time: T0 + 600 },
+        { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } }, time: T0 + 601 },
+      ),
+      inheritedEventCount: 0,
+    }
+    const child: StoredSession = {
+      header: childHeader('child-1', 'source-root', T0 + 100),
+      events: log(
+        { type: DESCRIPTOR, data: descriptor('continuable', 'outer work'), time: T0 + 100 },
+        { type: 'turn/start', data: { turn: 1 }, time: T0 + 101 },
+        { type: CATALOG, data: fact(grandchild.header.id, grandchild.header.createdAt, 'continuable', 'deep work'), time: T0 + 300 },
+        { type: 'turn/start', data: { turn: 2 }, time: T0 + 301 },
+      ),
+      inheritedEventCount: 0,
+    }
+    const seed = log(
+      { type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'outer work') },
+      { type: 'turn/start', data: { turn: 3 }, time: T0 + 400 },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([child, grandchild, great])
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: () => {},
+    })
+
+    expect(carried).toBe(1)
+    expect(backend.writes.created).toHaveLength(2)
+    const grandClone = backend.writes.created[0]!
+    const childClone = backend.writes.created[1]!
+    // The child lived entirely before the fork point: its whole log is kept.
+    expect(childClone.inheritedEventCount).toBe(child.events.length)
+    // The grandchild's fact survived the cut, so the grandchild is carried —
+    // but its own clone is cut by the same fork point, so its later turn and
+    // the great-grandchild's fact do not survive.
+    expect(grandClone.header.parentSession).toBe(childClone.header.id)
+    expect(grandClone.inheritedEventCount).toBe(2)
+    expect(grandClone.events.slice(0, 2)).toEqual(grandchild.events.slice(0, 2))
+    expect((grandClone.events as readonly RawEvent[]).slice(2).map(event => event.type)).toEqual([END_SEED, DESCRIPTOR])
+    const childSuffix = (childClone.events as readonly RawEvent[]).slice(childClone.inheritedEventCount)
+    expect(childSuffix.map(event => event.type)).toEqual([END_SEED, DESCRIPTOR, CATALOG])
+    expect(childSuffix[2]!.data).toMatchObject({ childId: grandClone.header.id, mode: 'continuable', label: 'deep work' })
+    expect(backend.writes.reads).toEqual(['child-1', 'grand-1'])
+    expect(factsOf(branch.snapshotEvents()).slice(factsOf(seed).length)).toHaveLength(1)
+  })
+
+  it('warns about a child with no history before the fork point', async () => {
+    const source = live('source-root')
+    const skewed: StoredSession = {
+      header: childHeader('skewed-child', 'source-root', T0 + 900),
+      events: log({ type: DESCRIPTOR, data: descriptor('one-shot'), time: T0 + 900 }),
+      inheritedEventCount: 0,
+    }
+    const seed = log(
+      { type: CATALOG, data: fact(skewed.header.id, skewed.header.createdAt, 'one-shot') },
+      { type: 'turn/start', data: { turn: 1 }, time: T0 + 200 },
+    )
+    const branch = branchOf('branch-1', source, seed)
+    const backend = currentStore([skewed])
+    const warnings: string[] = []
+
+    const carried = await carrySubagents({
+      branch,
+      source,
+      store: backend.store,
+      vocabulary: CURRENT_VOCABULARY,
+      warn: message => { warnings.push(message) },
+    })
+
+    expect(carried).toBe(0)
+    expect(backend.writes.created).toEqual([])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('skewed-child')
+    expect(warnings[0]).toContain('predate the rewind point')
   })
 
   it('warns about children that are gone or unreadable and carries the rest', async () => {
@@ -582,7 +733,14 @@ describe('carrySubagents', () => {
       ),
       inheritedEventCount: 2,
     }
-    const seed = log({ type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'seeded child') })
+    // The seed runs to the child's last event, so the fork point keeps the
+    // child's whole log in the clone.
+    const seed = log(
+      { type: CATALOG, data: fact(child.header.id, child.header.createdAt, 'continuable', 'seeded child') },
+      { type: 'turn/start', data: { turn: 1 } },
+      { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+      { type: 'turn/start', data: { turn: 2 } },
+    )
     const branch = branchOf('branch-1', source, seed)
     const backend = legacyStore([child])
 

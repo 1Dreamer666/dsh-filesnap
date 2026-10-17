@@ -4,6 +4,8 @@
 
 - 回退后的分支现在携带被保留轮次中派生的子智能体信息：在分支下克隆每个子会话并重写血缘（创建时间、工作目录、预设与深度保持不变），子智能体因此在分支中可见、可继续；不具备 catalog 词汇表的运行时只克隆、不写入其读不懂的事件，单个子会话失败仅告警、回退本身不受影响。
 - A rewound branch now carries the subagents spawned in its retained turns: every child session is cloned under the branch with its lineage rewritten (creation time, workspace, preset and depth preserved), so it is both visible and continuable there. Runtimes without the catalog vocabulary clone without writing events they cannot read, and one child's failure only warns — the rewind itself never fails.
+- 回退分支携带的子智能体现在按回退切点级联截断：切点之后出生的孙代理不再带入，被携带的子孙代理各自回到切点时刻的状态；撤销回退（redo）回到原件时完整家族原样在位。
+- Carried subagents are now cut recursively at the fork point: descendants born after the cut are left behind, carried ones return to their state at the cut, and redoing the rewind lands back on the untouched original with its full family intact.
 
 ## 0.4.0
 

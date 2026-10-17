@@ -11,13 +11,24 @@
  * This module walks the branch's inherited prefix, resolves every child it
  * names, and re-establishes each one under the branch as a clone: a fresh
  * session whose header keeps the child's identity fields but points at the
- * branch, and whose log copies the child's full stored log as an inherited
- * prefix. That prefix is closed exactly the way the harness closes its own
- * seeded children — a seeded header, an inherited-cut marker at the
- * boundary, then the child's descriptor re-anchored inside the clone's own
- * suffix — so the clone's descriptor, catalog, and continuation folds all
- * start where its inherited history ends, not at the copied log's start.
- * The clone is what the branch can then show and continue.
+ * branch, and whose log copies the child's stored log — as it stood at the
+ * fork point — as an inherited prefix. That prefix is closed exactly the way
+ * the harness closes its own seeded children — a seeded header, an
+ * inherited-cut marker at the boundary, then the child's descriptor
+ * re-anchored inside the clone's own suffix — so the clone's descriptor,
+ * catalog, and continuation folds all start where its inherited history
+ * ends, not at the copied log's start. The clone is what the branch can then
+ * show and continue.
+ *
+ * The carry reproduces the fork point at every depth, so the branch shows
+ * the family the rewound session had at the cut and no more: a child's log
+ * is truncated to the events at or before the moment of the cut — the
+ * branch's last inherited event — and descendants are discovered and
+ * carried from inside that kept history only. A grandchild established
+ * after the cut stays out, because the fact that names it lies beyond the
+ * kept log, and a grandchild established before it is truncated by the same
+ * cut time, recursively. Redoing the rewind needs no carry at all: the
+ * pre-rewind session, and every child under it, was never touched.
  *
  * Two runtime generations are spanned, because this plugin's supported
  * harness range is:
@@ -148,6 +159,13 @@ interface Candidate {
   readonly fact?: CatalogEntry
 }
 
+/** What discovery found: the children to carry, and the fork point their logs are read to. */
+interface Discovery {
+  readonly candidates: readonly Candidate[]
+  /** The time of the branch's last inherited event, or `undefined` when it inherited nothing. */
+  readonly cutTime: number | undefined
+}
+
 /** The established mode of a child, folded from its own descriptor. */
 interface ChildDescriptor {
   readonly mode: 'one-shot' | 'continuable'
@@ -159,6 +177,8 @@ interface CloneInput {
   readonly store: SubagentCarryStore
   readonly candidate: Candidate
   readonly parentId: SessionId
+  /** The fork point — the branch's last inherited event; every later event is history the rewind dropped. */
+  readonly cutTime: number
   /** Whether catalog facts may be written under this runtime's vocabulary. */
   readonly writable: boolean
   /** Originals already cloned in this carry, so a corrupt lineage cannot recurse. */
@@ -180,8 +200,11 @@ interface CloneResult {
  * `subagent/catalog` fact below the fork cut names a child that existed
  * before it. A prefix with no facts — a log written before the catalog
  * existed — falls back to stored `origin: 'subagent'` children of the
- * rewound session created no later than the last inherited event. Facts
- * whose session is gone, and clones whose write fails, are warned about and
+ * rewound session created no later than the last inherited event. Every
+ * child — and every descendant carried under it, recursively — is
+ * re-established in the state it had at the fork point, its log truncated
+ * to events at or before the branch's last inherited event. Facts whose
+ * session is gone, and clones whose write fails, are warned about and
  * skipped; everything else is carried.
  *
  * @param options - the branch, its source, storage, vocabulary and warnings.
@@ -202,13 +225,17 @@ export async function carrySubagents(options: CarrySubagentsOptions): Promise<nu
 async function carry(options: CarrySubagentsOptions, store: SubagentCarryStore): Promise<number> {
   const { branch, source, vocabulary, warn, signal } = options
   const writable = vocabulary.has(CATALOG_EVENT_TYPE)
-  const candidates = await candidatesFor(store, branch, source, signal, warn)
+  const discovery = await candidatesFor(store, branch, source, signal, warn)
+  // Nothing inherited means no fork point to cut to: there is nothing the
+  // rewind retained, and hence nothing to carry. Discovery cannot name a
+  // candidate without one, so this is a guard for the types' sake.
+  if (discovery.cutTime === undefined) return 0
   const seen = new Set<string>()
   let carried = 0
-  for (const candidate of candidates) {
+  for (const candidate of discovery.candidates) {
     if (signal?.aborted === true) break
     try {
-      const clone = await cloneChild({ store, candidate, parentId: branch.header.id, writable, seen, warn, signal })
+      const clone = await cloneChild({ store, candidate, parentId: branch.header.id, cutTime: discovery.cutTime, writable, seen, warn, signal })
       if (clone === undefined) continue
       if (writable) appendFactEvent(branch, clone.payload)
       carried += 1
@@ -219,17 +246,20 @@ async function carry(options: CarrySubagentsOptions, store: SubagentCarryStore):
   return carried
 }
 
-/** Discover the children the branch's retained history spawned. */
+/** Discover the children the branch's retained history spawned, and the fork point that caps their logs. */
 async function candidatesFor(
   store: SubagentCarryStore,
   branch: Session,
   source: Session,
   signal: AbortSignal | undefined,
   warn: (message: string) => void,
-): Promise<Candidate[]> {
+): Promise<Discovery> {
   const events = branch.snapshotEvents() as readonly RawEvent[]
   const cut = Number(branch.inheritedEventCount)
   const prefix = events.filter(event => event.seq < cut)
+  // The last inherited event is the moment of the rewind's cut: every clone
+  // is read to this point, at every depth.
+  const cutTime = prefix.at(-1)?.time
   const entries = entriesIn(prefix)
   if (entries.length > 0) {
     // Facts win: they name their child directly and survive rewinds of
@@ -241,13 +271,12 @@ async function candidatesFor(
       if (header !== undefined) resolved.add(stampOf(header))
     }
     const candidates = await resolve(store, entries, signal, warn)
-    return candidates.filter(candidate => !resolved.has(stampOf(candidate.header)))
+    return { candidates: candidates.filter(candidate => !resolved.has(stampOf(candidate.header))), cutTime }
   }
   // No facts to read: a log written before the catalog existed. Children
   // are its stored subagent sessions created no later than the branch's
   // last retained event, minus whatever the branch already parents.
-  const cutTime = prefix.at(-1)?.time
-  if (cutTime === undefined || store.list === undefined) return []
+  if (cutTime === undefined || store.list === undefined) return { candidates: [], cutTime }
   const headers = await listedHeaders(store, signal)
   const resolved = new Set<string>()
   const found: Candidate[] = []
@@ -261,7 +290,7 @@ async function candidatesFor(
       found.push({ childId: header.id, header })
     }
   }
-  return lastPerStamp(found).filter(candidate => !resolved.has(stampOf(candidate.header)))
+  return { candidates: lastPerStamp(found).filter(candidate => !resolved.has(stampOf(candidate.header))), cutTime }
 }
 
 /** Turn fact entries into candidates, warning about children that are gone. */
@@ -312,6 +341,13 @@ function stampOf(header: SessionHeader): string {
 /**
  * Clone one child — and, recursively, its own children — under a new parent.
  *
+ * The clone is cut to the fork point: only the child's events at or before
+ * {@link CloneInput.cutTime} are copied, so the branch gets the state the
+ * child had when the rewind cut its source. That is what keeps a grandchild
+ * established after the cut out of the carry — the fact naming it is
+ * dropped with the rest of the later history — and it applies at every
+ * depth, because a carried descendant is truncated by the same cut time.
+ *
  * Descendants are cloned before the clone that will name them is written,
  * because a clone's own children are named from inside its log: the fresh
  * grandchild facts close the clone's own suffix, with the same contraction
@@ -323,29 +359,36 @@ function stampOf(header: SessionHeader): string {
  * already seen in this carry is skipped rather than revisited, so a corrupt
  * lineage cannot recurse forever.
  *
- * @param input - the child, the parent it is re-attached to, and the carry context.
- * @returns the clone's identity and fresh fact payload, or `undefined` when it was already seen.
+ * @param input - the child, the parent it is re-attached to, the fork point, and the carry context.
+ * @returns the clone's identity and fresh fact payload, or `undefined` when it was already seen or has no kept history.
  */
 async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
-  const { store, candidate, parentId, writable, seen, warn, signal } = input
+  const { store, candidate, parentId, cutTime, writable, seen, warn, signal } = input
   const key = candidate.childId as string
   if (seen.has(key)) return undefined
   seen.add(key)
 
   const saved = await readLog(store, candidate.childId, signal)
+  // The fork point caps the clone's history: everything the child did after
+  // the rewind cut — and everything it spawned after it — stays out.
+  const kept = saved.events.filter(event => event.time <= cutTime)
+  if (kept.length === 0) {
+    warn(`subagent "${candidate.childId}" was not carried: none of its events predate the rewind point`)
+    return undefined
+  }
   const cloneId = brandSessionId(randomUUID())
-  const descriptor = foldDescriptor(saved.events, saved.inheritedEventCount)
-  const inheritedDescriptor = descriptorPayloadOf(saved.events, saved.inheritedEventCount)
+  const descriptor = foldDescriptor(kept, saved.inheritedEventCount)
+  const inheritedDescriptor = descriptorPayloadOf(kept, saved.inheritedEventCount)
 
-  // The child's own suffix holds the facts of the children it spawned —
-  // including, from an earlier carry, a previous generation of clones.
-  // Keeping the last per stamp extends the newest lineage rather than an
-  // original that is already represented.
-  const own = saved.events.filter(event => event.seq >= saved.inheritedEventCount)
+  // The child's own kept suffix holds the facts of the children it spawned
+  // before the cut — including, from an earlier carry, a previous
+  // generation of clones. Keeping the last per stamp extends the newest
+  // lineage rather than an original that is already represented.
+  const own = kept.filter(event => event.seq >= saved.inheritedEventCount)
   const payloads: Record<string, unknown>[] = []
   for (const descendant of await resolve(store, entriesIn(own), signal, warn)) {
     try {
-      const grand = await cloneChild({ store, candidate: descendant, parentId: cloneId, writable, seen, warn, signal })
+      const grand = await cloneChild({ store, candidate: descendant, parentId: cloneId, cutTime, writable, seen, warn, signal })
       if (grand === undefined || !writable) continue
       payloads.push(grand.payload)
     } catch (error) {
@@ -366,15 +409,15 @@ async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
     ...lineage.agentPreset === undefined ? {} : { agentPreset: lineage.agentPreset },
   }
 
-  // The copied log is the clone's inherited prefix; the clone's own suffix
+  // The kept log is the clone's inherited prefix; the clone's own suffix
   // follows it in the harness's seeded-child shape.
-  const cut = saved.events.length
+  const cut = kept.length
   const suffix: RawEvent[] = [sessionEvent(END_SEED_EVENT_TYPE, cut, { inherited: true })]
   if (inheritedDescriptor !== undefined) {
     suffix.push(sessionEvent(DESCRIPTOR_EVENT_TYPE, cut + suffix.length, inheritedDescriptor))
   }
   for (const payload of payloads) suffix.push(factEvent(cut + suffix.length, payload))
-  const batch = [...saved.events, ...suffix] as unknown as readonly SessionEvent[]
+  const batch = [...kept, ...suffix] as unknown as readonly SessionEvent[]
 
   if (typeof store.open === 'function') {
     if (store.create === undefined) throw new Error('the persistence backend exposes no create')
