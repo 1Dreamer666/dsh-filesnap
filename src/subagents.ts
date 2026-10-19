@@ -79,6 +79,8 @@ const DESCRIPTOR_VERSION = 3
  * call site checks before calling.
  */
 export interface SubagentCarryHandle {
+  /** The open session's stored header, on handles that expose it. */
+  readonly header?: SessionHeader
   /** The open session's inherited prefix length; both access modes expose it. */
   readonly inheritedEventCount?: number
   /** Read a slice of the logical log; called once for the whole range. */
@@ -100,6 +102,8 @@ export interface SubagentCarryHandle {
  *   generation, which this module detects through `typeof open`.
  * - {@link inspect} and {@link list} in its raw-header form are the 0.1.2
  *   generation's cold-read and listing surface.
+ * - {@link locate} exists wherever the backend keeps a raw artifact per
+ *   session, which both JSONL generations do.
  * - {@link create} exists in both with different signatures: 0.2.0's takes
  *   `{ inheritedEventCount }` and returns the owned write handle, while
  *   0.1.2's takes the cut positionally, returns nothing, and materializes
@@ -111,6 +115,8 @@ export interface SubagentCarryStore {
   readonly stat?: (id: SessionId, options?: { readonly signal?: AbortSignal }) => Promise<{ readonly header: SessionHeader } | undefined>
   /** Both: stored sessions, header-first (0.1.2 yields raw headers, 0.2.0 snapshots). */
   readonly list?: (signal?: AbortSignal | { readonly signal?: AbortSignal }) => Promise<readonly unknown[]>
+  /** Both, where the backend keeps one raw artifact per session: the file a stored header addresses. */
+  readonly locate?: (header: SessionHeader) => { readonly kind: string; readonly path: string } | undefined
   /** 0.1.2: validated header plus the whole log. */
   readonly inspect?: (id: SessionId, signal?: AbortSignal) => Promise<{ readonly meta: SessionHeader; readonly events: readonly SessionEvent[]; readonly inheritedEventCount: number }>
   /** 0.2.0: open one session for `read` or `write`. */
@@ -368,10 +374,10 @@ async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
   if (seen.has(key)) return undefined
   seen.add(key)
 
-  const saved = await readLog(store, candidate.childId, signal)
+  const saved = await readStoredLog(store, candidate.childId, signal)
   // The fork point caps the clone's history: everything the child did after
   // the rewind cut — and everything it spawned after it — stays out.
-  const kept = saved.events.filter(event => event.time <= cutTime)
+  const kept = (saved.events as readonly RawEvent[]).filter(event => event.time <= cutTime)
   if (kept.length === 0) {
     warn(`subagent "${candidate.childId}" was not carried: none of its events predate the rewind point`)
     return undefined
@@ -521,25 +527,46 @@ function descriptorPayloadOf(events: readonly RawEvent[], inheritedEventCount: n
   return undefined
 }
 
-/** Read one stored session's verbatim log and its inherited cut, through either generation. */
-async function readLog(
+/** One stored session as a listing reports it: its header, plus the backend's stored-format verdict when stated. */
+export interface StoredSessionListing {
+  readonly header: SessionHeader
+  /** `'current'` when the backend already reads the artifact, `'migration-required'` when it lags; 0.1.2 states nothing. */
+  readonly formatStatus?: string
+}
+
+/** Every stored session through either generation's listing call. */
+export async function listStoredSessions(store: SubagentCarryStore, signal?: AbortSignal): Promise<readonly StoredSessionListing[]> {
+  if (store.list === undefined) return []
+  const options = signal === undefined ? {} : { signal }
+  const rows = await store.list(typeof store.open === 'function' ? options : signal)
+  const listings: StoredSessionListing[] = []
+  for (const row of rows) {
+    const header = rowHeader(row)
+    if (header === undefined) continue
+    const formatStatus = (row as { readonly formatStatus?: unknown }).formatStatus
+    listings.push(typeof formatStatus === 'string' ? { header, formatStatus } : { header })
+  }
+  return listings
+}
+
+/** Read one stored session's header, verbatim log and inherited cut back through either generation. */
+export async function readStoredLog(
   store: SubagentCarryStore,
   id: SessionId,
   signal: AbortSignal | undefined,
-): Promise<{ readonly events: readonly RawEvent[]; readonly inheritedEventCount: number }> {
+): Promise<{ readonly header: SessionHeader; readonly events: readonly SessionEvent[]; readonly inheritedEventCount: number }> {
   if (typeof store.inspect === 'function') {
     const inspection = await store.inspect(id, signal)
-    return {
-      events: inspection.events as readonly RawEvent[],
-      inheritedEventCount: Number(inspection.inheritedEventCount),
-    }
+    return { header: inspection.meta, events: inspection.events, inheritedEventCount: Number(inspection.inheritedEventCount) }
   }
   if (typeof store.open === 'function') {
     const handle = await store.open(id, 'read', { ...signal === undefined ? {} : { signal } })
     try {
       if (handle.read === undefined) throw new Error(`the read handle of session "${id}" exposes no read`)
+      const header = handle.header ?? await headerOf(store, id, signal)
+      if (header === undefined) throw new Error(`session "${id}" has no stored header`)
       const { events } = await handle.read(0, Number.MAX_SAFE_INTEGER, { ...signal === undefined ? {} : { signal } })
-      return { events: events as readonly RawEvent[], inheritedEventCount: Number(handle.inheritedEventCount ?? 0) }
+      return { header, events, inheritedEventCount: Number(handle.inheritedEventCount ?? 0) }
     } finally {
       await handle.close()
     }
@@ -559,12 +586,7 @@ async function headerOf(store: SubagentCarryStore, id: SessionId, signal: AbortS
 /** Every stored header, keyed by id. */
 async function listedHeaders(store: SubagentCarryStore, signal: AbortSignal | undefined): Promise<Map<string, SessionHeader>> {
   const headers = new Map<string, SessionHeader>()
-  if (store.list === undefined) return headers
-  const rows = await store.list(typeof store.open === 'function' ? { ...signal === undefined ? {} : { signal } } : signal)
-  for (const row of rows) {
-    const header = rowHeader(row)
-    if (header !== undefined) headers.set(header.id as string, header)
-  }
+  for (const { header } of await listStoredSessions(store, signal)) headers.set(header.id as string, header)
   return headers
 }
 

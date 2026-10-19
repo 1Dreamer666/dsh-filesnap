@@ -5,6 +5,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { migrateFile, repairArtifact, migrateStatusTitles } from './migrate-session-logs.ts'
+import { listStoredSessions } from './subagents.ts'
+import type { SubagentCarryStore } from './subagents.ts'
 import type { MigrationPlan, MigrationReport, MigrationTaskInfo, AutomaticMigrationStatus } from './wire.ts'
 
 export interface MigrationTask extends MigrationTaskInfo {
@@ -70,12 +72,17 @@ export class MigrationManager {
     if (task === undefined) throw new Error('Unknown migration task.')
     const persistence = this.ctx.get('sessionPersistence')
     if (persistence === undefined) throw new Error('Session persistence is not available.')
-    const headers = await persistence.list(signal)
+    const store = persistence as unknown as SubagentCarryStore
+    const listings = await listStoredSessions(store, signal)
     const entries: MigrationPlan['entries'][number][] = []
     const files: { id: string; path: string; hash: string }[] = []
-    for (const header of headers) {
+    for (const { header, formatStatus } of listings) {
       signal?.throwIfAborted()
-      const location = persistence.locate(header)
+      // The backend's own verdict on the stored format: an artifact it already
+      // reads in full has nothing for these legacy repairs to do, and the
+      // transform would only refuse its header.
+      if (formatStatus === 'current') continue
+      const location = store.locate?.(header)
       if (location?.kind !== 'jsonl') {
         entries.push({ session: header.id, state: 'unsupported', events: 0, detail: 'This task supports the JSONL session backend only.' })
         continue
@@ -89,7 +96,7 @@ export class MigrationManager {
         if (!live) files.push({ id: header.id, path: location.path, hash: digest(bytes) })
       } catch (error) { entries.push({ session: header.id, state: 'error', events: 0, detail: String(error) }) }
     }
-    const value: MigrationPlan = { token: randomUUID(), task: task.id, scanned: headers.length, entries }
+    const value: MigrationPlan = { token: randomUUID(), task: task.id, scanned: listings.length, entries }
     this.plan = { value, files, expires: Date.now() + 300_000 }
     return value
   }

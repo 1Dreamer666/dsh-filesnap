@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { zstdCompressSync } from 'node:zlib'
+import type { Context as CordisContext } from '@deepseek-ai/cordis'
 import { decodeArtifact, migrateFile, repairArtifact, migrateStatusTitles } from '../src/migrate-session-logs.ts'
 import { scratch } from './support.ts'
 
@@ -73,6 +74,52 @@ it('supports a versioned catalogue, skips loaded sessions, detects stale scans a
     expect((await manager.scan('future-format-v2')).entries).toEqual([])
     await expect(manager.scan('unknown')).rejects.toThrow('Unknown')
   } finally { dir.remove() }
+})
+
+it('scans a 0.2.0 snapshot listing, skipping what the backend already reads', async () => {
+  const { Context } = await import('@deepseek-ai/cordis')
+  const { MigrationManager } = await import('../src/migrations.ts')
+  const dir = scratch('filesnap-migration-shapes')
+  const path = join(dir.path, 'session.jsonl')
+  const ctx = new Context()
+  ctx.provide('sessions', { get: () => undefined })
+  let options: unknown = 'unset'
+  const located: string[] = []
+  ctx.provide('sessionPersistence', {
+    open: async () => { throw new Error('nothing opens a listing') },
+    async list(received: unknown) {
+      options = received
+      return [
+        { header: { id: 'legacy' }, formatStatus: 'migration-required', revision: 'r1', sizeBytes: 1 },
+        { header: { id: 'current' }, formatStatus: 'current', revision: 'r1', sizeBytes: 1 },
+      ]
+    },
+    locate(meta: { id: string }) { located.push(meta.id); return { kind: 'jsonl', path } },
+  } as unknown as CordisContext['sessionPersistence'])
+  const manager = new MigrationManager(ctx)
+  try {
+    writeFileSync(path, raw)
+    const plan = await manager.scan('legacy-session-events-v1')
+    // The options object identifies the 0.2.0 listing call; the artifact the
+    // backend already reads in full is skipped without even being located.
+    expect(options).toEqual({})
+    expect(plan.scanned).toBe(2)
+    expect(plan.entries).toEqual([{ session: 'legacy', state: 'ready', events: 2 }])
+    expect(located).toEqual(['legacy'])
+  } finally { dir.remove() }
+})
+
+it('reports a session the backend cannot locate as unsupported rather than failing the scan', async () => {
+  const { Context } = await import('@deepseek-ai/cordis')
+  const { MigrationManager } = await import('../src/migrations.ts')
+  const ctx = new Context()
+  ctx.provide('sessions', { get: () => undefined })
+  ctx.provide('sessionPersistence', {
+    list: async () => [{ header: { id: 'legacy' }, formatStatus: 'migration-required' }],
+  } as unknown as CordisContext['sessionPersistence'])
+  const plan = await new MigrationManager(ctx).scan('legacy-session-events-v1')
+  expect(plan.scanned).toBe(1)
+  expect(plan.entries).toEqual([{ session: 'legacy', state: 'unsupported', events: 0, detail: 'This task supports the JSONL session backend only.' }])
 })
 
 it.each([false, true])('migrates legacy titles with a native title revision, preserving every historical event (zstd=%s)', compressed => {

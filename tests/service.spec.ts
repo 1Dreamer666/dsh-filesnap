@@ -378,6 +378,46 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     ] })
   })
 
+  it('resolves cold ancestors through the 0.2.0 read-handle surface, where inspect no longer exists', async () => {
+    const parent = sessionAt('ancestor2', workspace.path)
+    const agent = agentOn(parent)
+    for (const turn of [1, 2, 3]) await runTurn(parent, turn, `p${turn}`, () => service.capture(agent, turn))
+    const cut = parent.snapshotEvents().findIndex(e => e.type === 'turn/start' && e.data.turn === 3)
+    const seed = parent.snapshotEvents().slice(0, cut)
+    const child = Session.create(SessionId('branch2'), seed, { ...parent.header, id: SessionId('branch2'), parentSession: parent.id, isSeeded: true }, SessionLogOffset(seed.length))
+    await runTurn(child, 3, 'branch edit', () => service.capture(agentOn(child), 3))
+    const childSeed = child.snapshotEvents()
+    const grandchild = Session.create(SessionId('nested2'), childSeed, { ...child.header, id: SessionId('nested2'), parentSession: child.id }, SessionLogOffset(childSeed.length))
+    // The 0.2.0 surface: header stats and one read handle per cold ancestor,
+    // carrying its own header, log and inherited cut. There is no `inspect`
+    // on this generation, so the cold read must go through the handle.
+    const ancestors = new Map([[parent.id, parent], [child.id, child]])
+    const opened: string[] = []
+    const closed: string[] = []
+    ctx.provide('sessionPersistence', {
+      async stat(id: SessionId) {
+        const source = ancestors.get(id)
+        return source === undefined ? undefined : { header: source.header }
+      },
+      async open(id: SessionId) {
+        const source = ancestors.get(id)
+        if (source === undefined) throw new Error(`session "${id}" is not stored`)
+        opened.push(id as string)
+        return {
+          header: source.header,
+          inheritedEventCount: source.inheritedEventCount,
+          read: async () => ({ events: source.snapshotEvents() }),
+          close: async () => { closed.push(id as string) },
+        }
+      },
+    } as unknown as Context['sessionPersistence'])
+    expect(await service.points(agentOn(grandchild))).toMatchObject({ ok: true, value: [
+      { point: 'ancestor2.t1' }, { point: 'ancestor2.t2' }, { point: 'branch2.t3' },
+    ] })
+    expect(opened).toEqual(['branch2', 'ancestor2'])
+    expect(closed).toEqual(['branch2', 'ancestor2'])
+  })
+
   it('forks the conversation, then restores the files into the fork', async () => {
     const file = join(workspace.path, 'a.txt')
     const session = sessionAt('session-a', workspace.path)

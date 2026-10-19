@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest'
 import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
-import { carrySubagents } from '../src/subagents.ts'
+import { carrySubagents, listStoredSessions, readStoredLog } from '../src/subagents.ts'
 import type { SubagentCarryStore } from '../src/subagents.ts'
 
 const CATALOG = 'subagent/catalog'
@@ -142,6 +142,7 @@ function currentStore(seed: readonly StoredSession[]) {
       if (broken.has(id as string)) throw new Error(`session "${id}" cannot be opened`)
       writes.reads.push(id as string)
       return {
+        header: found.header,
         inheritedEventCount: found.inheritedEventCount,
         async read() { return { events: found.events } },
         async close() { writes.closed += 1 },
@@ -195,6 +196,82 @@ function legacyStore(seed: readonly StoredSession[]) {
   }
   return { store: store as unknown as SubagentCarryStore, stored, writes, broken }
 }
+
+describe('readStoredLog', () => {
+  const child: StoredSession = {
+    header: childHeader('child-9', 'parent-9', T0),
+    events: log({ type: 'turn/start', data: { turn: 1 } }),
+    inheritedEventCount: 1,
+  }
+
+  it('reads either generation back with its header, log and inherited cut', async () => {
+    const legacy = await readStoredLog(legacyStore([child]).store, SessionId('child-9'), undefined)
+    expect(legacy).toEqual({ header: child.header, events: child.events, inheritedEventCount: 1 })
+    const current = await readStoredLog(currentStore([child]).store, SessionId('child-9'), undefined)
+    expect(current).toEqual({ header: child.header, events: child.events, inheritedEventCount: 1 })
+  })
+
+  it('falls back to a header stat when the read handle states no header', async () => {
+    const store: SubagentCarryStore = {
+      async stat() { return { header: child.header } },
+      async open() {
+        return { inheritedEventCount: child.inheritedEventCount, async read() { return { events: child.events } }, async close() {} }
+      },
+    }
+    expect(await readStoredLog(store, SessionId('child-9'), undefined))
+      .toEqual({ header: child.header, events: child.events, inheritedEventCount: 1 })
+  })
+
+  it('closes the read handle even when the read itself fails', async () => {
+    let closed = 0
+    const store: SubagentCarryStore = {
+      async open() {
+        return {
+          header: child.header,
+          async read(): Promise<never> { throw new Error('the log cannot be read') },
+          async close() { closed += 1 },
+        }
+      },
+    }
+    await expect(readStoredLog(store, SessionId('child-9'), undefined)).rejects.toThrow('the log cannot be read')
+    expect(closed).toBe(1)
+  })
+
+  it('refuses a backend that exposes neither inspect nor open', async () => {
+    await expect(readStoredLog({}, SessionId('child-9'), undefined)).rejects.toThrow('neither inspect nor open')
+  })
+})
+
+describe('listStoredSessions', () => {
+  const first = childHeader('child-a', 'parent-9', T0)
+  const second = childHeader('child-b', 'parent-9', T0 + 1)
+
+  it("unwraps 0.2.0 snapshots with the backend's format verdict", async () => {
+    let options: unknown = 'unset'
+    const store: SubagentCarryStore = {
+      async open() { throw new Error('nothing opens a listing') },
+      async list(received) {
+        options = received
+        return [
+          { header: first, formatStatus: 'current', revision: 'r1', sizeBytes: 10 },
+          { header: second, formatStatus: 'migration-required' },
+        ]
+      },
+    }
+    expect(await listStoredSessions(store)).toEqual([
+      { header: first, formatStatus: 'current' },
+      { header: second, formatStatus: 'migration-required' },
+    ])
+    expect(options).toEqual({})
+  })
+
+  it('passes 0.1.2 raw headers through and drops rows that carry none', async () => {
+    const store: SubagentCarryStore = {
+      async list() { return [first, { nope: 1 }, second] },
+    }
+    expect(await listStoredSessions(store, undefined)).toEqual([{ header: first }, { header: second }])
+  })
+})
 
 describe('carrySubagents', () => {
   it('clones a named child under the branch and appends the fact that makes it visible', async () => {

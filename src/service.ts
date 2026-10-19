@@ -21,7 +21,7 @@ import { createFilesnapCli, hasNoRestore, eventsOfType, lastEvent, numberField, 
 import { explain, pointId, sessionId as admitSessionId } from './ids.ts'
 import { mark, activate } from './mark.ts'
 import { foldPoints, selectPoint } from './points.ts'
-import { carrySubagents } from './subagents.ts'
+import { carrySubagents, readStoredLog } from './subagents.ts'
 import type { SubagentCarryStore } from './subagents.ts'
 import type { FilesnapStatus, RedoOutcome, RewindOutcome, RewindPoint, RewindRefusal, RewindResult } from './types.ts'
 import { FALLBACK_COMMAND } from './config.ts'
@@ -612,8 +612,8 @@ export class FilesnapRewind extends Service {
         else {
           const persistence = this.ctx.get('sessionPersistence')
           if (persistence === undefined) throw new Error('The parent conversation must be available to resolve inherited snapshots.')
-          const source = await persistence.inspect(header.parentSession, signal)
-          parent = await read(source.meta, source.events, source.inheritedEventCount)
+          const source = await readStoredLog(persistence as unknown as SubagentCarryStore, header.parentSession, signal)
+          parent = await read(source.header, source.events, source.inheritedEventCount)
         }
       }
       const result = new Map<number, string>()
