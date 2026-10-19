@@ -52,7 +52,7 @@ it('supports a versioned catalogue, skips loaded sessions, detects stale scans a
   })
   const manager = new MigrationManager(ctx, [...MIGRATIONS, {
     id: 'future-format-v2', from: '0.3.x', to: '0.4.x', name: 'Future test', nameZh: '未来版本测试',
-    transform: bytes => ({ bytes, events: 0 }),
+    transform: bytes => ({ bytes, events: 0 }), supports: [0],
   }])
   try {
     writeFileSync(path, raw)
@@ -120,6 +120,60 @@ it('reports a session the backend cannot locate as unsupported rather than faili
   const plan = await new MigrationManager(ctx).scan('legacy-session-events-v1')
   expect(plan.scanned).toBe(1)
   expect(plan.entries).toEqual([{ session: 'legacy', state: 'unsupported', events: 0, detail: 'This task supports the JSONL session backend only.' }])
+})
+
+it('falls back to the artifact a directory actually stores when the located target names another generation', async () => {
+  const { Context } = await import('@deepseek-ai/cordis')
+  const { MigrationManager } = await import('../src/migrations.ts')
+  const dir = scratch('filesnap-migration-fallback')
+  const legacy = join(dir.path, 'session.jsonl')
+  writeFileSync(legacy, raw)
+  const ctx = new Context()
+  ctx.provide('sessions', { get: () => undefined })
+  ctx.provide('sessionPersistence', {
+    list: async () => [{ header: { id: 'legacy' }, formatStatus: 'migration-required' }],
+    locate: () => ({ kind: 'jsonl', path: join(dir.path, 'session.v4.jsonl.zstd') }),
+  } as unknown as CordisContext['sessionPersistence'])
+  const manager = new MigrationManager(ctx)
+  try {
+    const plan = await manager.scan('legacy-session-events-v1')
+    expect(plan.entries).toEqual([{ session: 'legacy', state: 'ready', events: 2 }])
+    const report = await manager.execute(plan.token)
+    expect(report.entries[0]?.state).toBe('migrated')
+    expect(readFileSync(report.entries[0]!.backup!, 'utf8')).toBe(raw)
+    expect(readFileSync(legacy, 'utf8')).toContain('"ignorable":true')
+  } finally { dir.remove() }
+})
+
+it('leaves artifacts of generations the task does not repair silent and untouched', async () => {
+  const { Context } = await import('@deepseek-ai/cordis')
+  const { MigrationManager } = await import('../src/migrations.ts')
+  const dir = scratch('filesnap-migration-generation')
+  const stored = join(dir.path, 'session.v3.jsonl')
+  writeFileSync(stored, JSON.stringify({ type: 'session', version: 3, id: 'legacy' }) + '\n')
+  const ctx = new Context()
+  ctx.provide('sessions', { get: () => undefined })
+  ctx.provide('sessionPersistence', {
+    list: async () => [{ header: { id: 'legacy' }, formatStatus: 'migration-required' }],
+    locate: () => ({ kind: 'jsonl', path: join(dir.path, 'session.v4.jsonl.zstd') }),
+  } as unknown as CordisContext['sessionPersistence'])
+  try {
+    const plan = await new MigrationManager(ctx).scan('legacy-session-events-v1')
+    expect(plan.scanned).toBe(1)
+    expect(plan.entries).toEqual([])
+    expect(readFileSync(stored, 'utf8')).toContain('"version":3')
+    // When the located target exists, it is the artifact the backend reads;
+    // an inert older sibling beside it is not this task's target either.
+    writeFileSync(join(dir.path, 'session.jsonl'), raw)
+    const targeted = new Context()
+    targeted.provide('sessions', { get: () => undefined })
+    targeted.provide('sessionPersistence', {
+      list: async () => [{ header: { id: 'legacy' }, formatStatus: 'migration-required' }],
+      locate: () => ({ kind: 'jsonl', path: stored }),
+    } as unknown as CordisContext['sessionPersistence'])
+    expect((await new MigrationManager(targeted).scan('legacy-session-events-v1')).entries).toEqual([])
+    expect(readFileSync(join(dir.path, 'session.jsonl'), 'utf8')).toBe(raw)
+  } finally { dir.remove() }
 })
 
 it.each([false, true])('migrates legacy titles with a native title revision, preserving every historical event (zstd=%s)', compressed => {
