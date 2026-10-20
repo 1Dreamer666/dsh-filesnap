@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- 首次 points 读取失败后允许重新打开会话重试，并为仍显示的会话安排一次延迟重试；新请求取消过期重试，同一 revision 的消费者共享正在进行的自动重试，避免恢复后的回退按钮再次消失（#14，修复 #13）。
+- Retry failed initial points reads on reopening, with one delayed retry while the view remains visible. New requests cancel stale retries, and consumers of the same revision share an in-flight automatic retry so recovered rewind buttons stay available (#14, fixes #13).
+
 ## 0.4.1
 
 - 当 Connection 服务注册通道时访问不到 `webServer`（桌面端的 0.2.0-rc.2 构建），UI 通道改为直接挂载到宿主 web server 上的同一前缀路由；准入、信封校验与请求体上限不变，浏览器操作不再落到 405。
