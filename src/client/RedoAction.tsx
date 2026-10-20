@@ -1,8 +1,9 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { IconRefreshOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RedoPreview } from '../wire.ts'
 import type { RewindHeaderActions } from './actions.ts'
+import { IconRefresh } from './icons.ts'
 import css from './RewindAction.module.css'
 
 export function RedoAction({ redoSelection: selection, onRedoPreview, onRedoConfirm, onOpenSession, t }:
@@ -61,7 +62,7 @@ export function RedoAction({ redoSelection: selection, onRedoPreview, onRedoConf
   }
   return <>
     <Tooltip label={t('undo')} side="bottom" delayMs={500}>
-      <button type="button" className={css.action} aria-label={t('undo')} disabled={phase !== 'ready'} onClick={() => { void load() }}><IconRefreshOutline16 size={14} /></button>
+      <button type="button" className={css.action} aria-label={t('undo')} disabled={phase !== 'ready'} onClick={() => { void load() }}><IconRefresh size={14} /></button>
     </Tooltip>
     <dialog ref={dialog} className={css.dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); close() }}>
       <h2 id={titleId}>{t(noRestore ? 'redoNoRestore' : 'redoTitle')}</h2>
