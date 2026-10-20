@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- 当 Connection 服务注册通道时访问不到 `webServer`（桌面端的 0.2.0-rc.2 构建），UI 通道改为直接挂载到宿主 web server 上的同一前缀路由；准入、信封校验与请求体上限不变，浏览器操作不再落到 405。
+- Mount the UI channel directly on the host web server when the Connection service cannot reach `webServer` while registering a channel (the Desktop app's 0.2.0-rc.2 build). Admission, envelope validation and the body cap are unchanged, and browser actions no longer meet the 405.
+
 ## 0.4.0
 
 - 新增「设置 → FileSnap → 中断恢复」：预览继续或回滚未完成的回退与 redo，确认时重新检查文件，冲突时停止。
