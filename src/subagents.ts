@@ -55,7 +55,7 @@
  * @module dsh-filesnap/subagents
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { SESSION_FORMAT_VERSION, SessionId as brandSessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 
@@ -332,16 +332,32 @@ function lastPerStamp(candidates: readonly Candidate[]): Candidate[] {
 }
 
 /**
- * The lineage stamp that ties a session to its earlier selves across rewinds.
- *
- * Clones copy exactly these header fields, so an original, its clone, and
- * every later clone of that clone share one stamp — which is what keeps a
- * rewind of a rewind from carrying both an original and its clone, and what
- * makes a fact written by an earlier carry suppress the original it came
- * from.
+ * A clone's id carries the hash of its original session id, plus a fresh UUID.
+ * The hash survives both generations' header serialization without adding
+ * fields or event types to native logs. The random suffix keeps each branch's
+ * clone independent. The bounded, path-safe id also fits FileSnap's id limit.
  */
+const CLONE_ID_PREFIX = 'filesnap-carry-v1.'
+const CLONE_ID = /^filesnap-carry-v1\.([0-9a-f]{64})\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+
+/** Match clones to their original, never by coincidentally equal header metadata. */
 function stampOf(header: SessionHeader): string {
-  return JSON.stringify([header.createdAt, header.cwd ?? null, header.agentPreset ?? null, header.delegationDepth ?? 0, header.origin ?? null])
+  if (header.isSeeded && header.origin === 'subagent') {
+    const carried = CLONE_ID.exec(header.id)?.[1]
+    if (carried !== undefined) return carried
+  }
+  return createHash('sha256').update(header.id).digest('hex')
+}
+
+/** Discover children of pre-catalog sessions at any depth. */
+async function childrenOf(store: SubagentCarryStore, parentId: SessionId, cutTime: number, signal: AbortSignal | undefined): Promise<Candidate[]> {
+  const found: Candidate[] = []
+  for (const header of (await listedHeaders(store, signal)).values()) {
+    if (header.origin === 'subagent' && header.parentSession === parentId && header.createdAt <= cutTime) {
+      found.push({ childId: header.id, header })
+    }
+  }
+  return lastPerStamp(found)
 }
 
 /**
@@ -382,7 +398,7 @@ async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
     warn(`subagent "${candidate.childId}" was not carried: none of its events predate the rewind point`)
     return undefined
   }
-  const cloneId = brandSessionId(randomUUID())
+  const cloneId = brandSessionId(`${CLONE_ID_PREFIX}${stampOf(candidate.header)}.${randomUUID()}`)
   const descriptor = foldDescriptor(kept, saved.inheritedEventCount)
   const inheritedDescriptor = descriptorPayloadOf(kept, saved.inheritedEventCount)
 
@@ -392,7 +408,11 @@ async function cloneChild(input: CloneInput): Promise<CloneResult | undefined> {
   // lineage rather than an original that is already represented.
   const own = kept.filter(event => event.seq >= saved.inheritedEventCount)
   const payloads: Record<string, unknown>[] = []
-  for (const descendant of await resolve(store, entriesIn(own), signal, warn)) {
+  const entries = entriesIn(own)
+  const descendants = entries.length > 0
+    ? await resolve(store, entries, signal, warn)
+    : await childrenOf(store, candidate.childId, cutTime, signal)
+  for (const descendant of descendants) {
     try {
       const grand = await cloneChild({ store, candidate: descendant, parentId: cloneId, cutTime, writable, seen, warn, signal })
       if (grand === undefined || !writable) continue

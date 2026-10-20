@@ -8,14 +8,21 @@
 // Prints one JSON line: { ok: true, types, filesnap } or { ok: false, message }.
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlModule from '@deepseek-ai/dsh-session-persistence-jsonl'
+const JsonlSessionPersistence = JsonlModule.default ?? JsonlModule
 
 const [root, id] = process.argv.slice(2)
 const ctx = new Context()
 const store = await ctx.plugin(SessionStore)
 const backend = await ctx.plugin(JsonlSessionPersistence, { root })
 try {
-  const loaded = await ctx.sessionPersistence.load(SessionId(id))
+  let loaded
+  if (typeof ctx.sessionPersistence.open === 'function') {
+    const handle = await ctx.sessionPersistence.open(SessionId(id), 'read')
+    try { loaded = await handle.read() } finally { await handle.close() }
+  } else {
+    loaded = await ctx.sessionPersistence.load(SessionId(id))
+  }
   const filesnap = loaded.events
     .filter(event => event.type.startsWith('filesnap/'))
     .map(event => ({ type: event.type, seq: event.seq, ignorable: event.ignorable }))

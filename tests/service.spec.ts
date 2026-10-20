@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, KNOWN_SESSION_EVENT_TYPES, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { registerCommands } from '../src/commands.ts'
@@ -79,6 +79,7 @@ async function runTurn(
     {
       turn,
       step: 1,
+      ...{ stream: [] },
       message: createAssistantMessage({
         content: [{ type: 'text', text: `answer to ${text}` }],
         source: { provider: 'mock', model: 'mock' },
@@ -459,28 +460,30 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     const session = liveSessionAt(live, 'session-a', workspace.path)
     const agent = agentOn(session)
     writeFileSync(file, 'original\n')
-    await runTurn(session, 1, 'set it up', async () => { await service.capture(agent, 1) })
-    const afterFirstTurn = session.snapshotEvents().length
-    // A child spawned inside the retained turn: stored under the session the
-    // rewind leaves, created no later than the retained history's last event.
-    const child = Session.create(SessionId('subagent-child'), undefined, {
-      version: SESSION_FORMAT_VERSION,
-      isSeeded: false,
-      id: SessionId('subagent-child'),
-      createdAt: session.snapshotEvents().at(-1)!.time,
-      cwd: workspace.path,
-      parentSession: session.id,
-      origin: 'subagent',
-      delegationDepth: 1,
+    let child!: Session
+    await runTurn(session, 1, 'set it up', async () => {
+      await service.capture(agent, 1)
+      // Both the header and the first event belong to the retained turn.
+      child = Session.create(SessionId('subagent-child'), undefined, {
+        version: SESSION_FORMAT_VERSION,
+        isSeeded: false,
+        id: SessionId('subagent-child'),
+        createdAt: Date.now(),
+        cwd: workspace.path,
+        parentSession: session.id,
+        origin: 'subagent',
+        delegationDepth: 1,
+      })
+      child.append('turn/start', { turn: 1 })
     })
-    child.append('turn/start', { turn: 1 })
+    const afterFirstTurn = session.snapshotEvents().length
     const created: { header: SessionHeader; events: readonly SessionEvent[] }[] = []
     const records = new Map<string, { header: SessionHeader; events: readonly SessionEvent[] }>([
       [String(child.id), { header: child.header, events: child.snapshotEvents() }],
     ])
     // The 0.1.2 persistence surface: raw header lists, `inspect`, and
-    // id-addressed writes. The linked harness composes no catalog vocabulary,
-    // so the carry may clone but must not append events to this session.
+    // id-addressed writes, exercised under both runtime generations,
+    // so catalog writes depend on the running harness vocabulary.
     ctx.provide('sessionPersistence', {
       list: async () => [...records.values()].map(record => record.header),
       inspect: async (id: string) => {
@@ -516,11 +519,18 @@ describe.skipIf(BINARY === undefined)('FilesnapRewind', () => {
     expect(clone.header.origin).toBe('subagent')
     expect(clone.header.createdAt).toBe(child.header.createdAt)
     // The copied log becomes the clone's inherited prefix, closed by the
-    // cut marker both generations read; no catalog fact follows, because
-    // this runtime composes no catalog vocabulary.
+    // cut marker both generations read. The parent receives a catalog fact
+    // only when the running harness recognizes that event type.
     expect(clone.events.slice(0, child.snapshotEvents().length)).toEqual(child.snapshotEvents())
     expect(clone.events.slice(child.snapshotEvents().length).map(event => event.type)).toEqual(['session/end-seed'])
-    expect(branch.snapshotEvents()).toEqual(before)
+    expect(branch.snapshotEvents().slice(0, before.length)).toEqual(before)
+    const suffix = branch.snapshotEvents().slice(before.length)
+    if (KNOWN_SESSION_EVENT_TYPES.has('subagent/catalog')) {
+      expect(suffix).toHaveLength(1)
+      expect(suffix[0]).toMatchObject({ type: 'subagent/catalog', data: { childId: clone.header.id } })
+    } else {
+      expect(suffix).toEqual([])
+    }
   })
 
   it('cuts the fork at the end of the previous turn, not inside the one being rewound', async () => {
