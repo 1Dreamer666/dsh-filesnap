@@ -15,10 +15,9 @@ export interface PointStore {
 const RETRY_DELAY = 2500
 
 export function pointStore(read: () => Promise<UiReply>): PointStore {
-  // The revision answering the last settle. A failed read clears it, so the
-  // next mount reads again instead of serving the failure for the life of the
-  // process — which is what it did while the first read could lose a race
-  // against the conversation being open.
+  // The revision being read or answering the last settle. A failed read
+  // clears it, so the next mount reads again instead of serving the failure
+  // for the life of the process when the first read races the view opening.
   let revision: FilesnapProjection | undefined
   let latest: FilesnapProjection | undefined
   let points: readonly RewindPoint[] = []
@@ -30,6 +29,11 @@ export function pointStore(read: () => Promise<UiReply>): PointStore {
     return () => { listeners.delete(listener) }
   }
   const snapshot = () => points
+  const cancelRetry = () => {
+    if (retry === undefined) return
+    clearTimeout(retry)
+    retry = undefined
+  }
   const publish = (next: readonly RewindPoint[]) => {
     points = next
     for (const listener of listeners) listener()
@@ -39,27 +43,34 @@ export function pointStore(read: () => Promise<UiReply>): PointStore {
       if (ticket !== generation) return
       revision = undefined
       publish([])
-      if (again) schedule()
+      if (again) schedule(ticket)
     }
     void read().then(result => {
       if (ticket !== generation) return
       if (!result.ok) { failed(); return }
+      cancelRetry()
       revision = latest
       publish(result.points ?? [])
     }).catch(failed)
   }
-  const schedule = () => {
-    if (retry !== undefined) return
+  const schedule = (ticket: number) => {
+    if (ticket !== generation || retry !== undefined) return
     retry = setTimeout(() => {
       retry = undefined
+      if (ticket !== generation) return
       // A closed view retries through the cleared revision on its next open.
-      if (listeners.size > 0) attempt(++generation, false)
+      if (listeners.size === 0) return
+      // New consumers must share this request while the retry is pending.
+      revision = latest
+      attempt(++generation, false)
     }, RETRY_DELAY)
   }
   const refresh = (projection: FilesnapProjection | undefined) => {
     if (projection === undefined) return
     latest = projection
     if (revision === projection) return
+    // A new request supersedes the retry scheduled by the earlier failure.
+    cancelRetry()
     revision = projection
     attempt(++generation, true)
   }
