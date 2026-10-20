@@ -35,6 +35,7 @@ import { type MigrationActions } from './MigrationPanel.tsx'
 import { FileSnapSettings, type RecoveryActions } from './RecoveryPanel.tsx'
 import { pointReader } from './points.ts'
 import { refillPrompt } from './refill.ts'
+import { revealSession } from './open-session.ts'
 
 export { RewindAction } from './RewindAction.tsx'
 export { RewindHeader } from './RewindHeader.tsx'
@@ -98,7 +99,7 @@ export function apply(ctx: ClientContext): void {
     listRecovery: () => maintenance('recovery-list', {}),
     previewRecovery: (id, mode) => maintenance('recovery-preview', { id, mode }),
     applyRecovery: token => maintenance('recovery-apply', { token }),
-    openSession: id => sessions.open(id as SessionId),
+    openSession: id => { revealSession(ctx, sessions, id as SessionId) },
   }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'filesnap', order: 60, label: 'FileSnap', locale: NS,
@@ -129,7 +130,7 @@ export function apply(ctx: ClientContext): void {
       const done = await request(sessionId, 'rewind', { point: point.point, child, token })
       if (done.ok && done.message !== undefined) return { ok: false, error: done.message }
       if (done.ok) {
-        sessions.open(child)
+        revealSession(ctx, sessions, child)
         const binding = sessions.binding(child)
         if (binding !== undefined) {
           try { refillPrompt(ctx.conversation.input.for(binding.ctx), done.promptText) }
@@ -188,7 +189,7 @@ export function apply(ctx: ClientContext): void {
     order: 20,
     locale: NS,
     inject: (sessionId): RewindHeaderActions => ({
-      onOpenSession: id => sessions.open(id as SessionId),
+      onOpenSession: id => { revealSession(ctx, sessions, id as SessionId) },
       onCleanupPreview: () => request(sessionId, 'cleanup-preview'),
       onCleanupConfirm: token => request(sessionId, 'cleanup', { token }),
       redoSelection: redoSelectionFor(sessionId),
@@ -197,7 +198,7 @@ export function apply(ctx: ClientContext): void {
         const result = await request(sessionId, 'redo', { token })
         // Host archive feeds can unmount the old branch before this RPC returns.
         // Keep navigation outside the dialog's component lifecycle.
-        if (result.ok && result.archived && result.child !== undefined) sessions.open(result.child as SessionId)
+        if (result.ok && result.archived && result.child !== undefined) revealSession(ctx, sessions, result.child as SessionId)
         return result
       },
       onStatus: () => request(sessionId, 'status'),

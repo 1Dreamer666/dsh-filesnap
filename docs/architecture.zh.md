@@ -35,7 +35,7 @@ FileSnap 引擎负责有界扫描、内容寻址去重、文件还原、undo 救
 
 使用 DSH 公开插槽：`conversation.chat.assistant-actions`、`conversation.session.header.actions`、`settings.section`。设置中的 FileSnap 页面提供中断恢复和多版本迁移入口。
 
-`ctx.connection.rpc.handle('/filesnap', …)` 与浏览器 Connection RPC 对接，沿用宿主的 Host/Origin 检查和浏览器认证。请求经 schema 验证，常规回退操作作用于已打开的对应 agent；中断恢复可通过独立记录处理尚未打开的会话。浏览器按钮不调用 `session.command`，因此不产生其 `command/run` 和 `command/done` 卡片。用户手动输入命令仍走宿主标准命令路径。
+`ctx.connection.rpc.handle('/filesnap', …)` 与浏览器 Connection RPC 对接，沿用宿主的 Host/Origin 检查和浏览器认证。当 Connection 服务注册通道时访问不到 `webServer`（桌面端的 0.2.0-rc.2 构建），插件改为直接在 `ctx.webServer` 上挂载同一前缀路由，准入、信封校验与请求体上限保持一致。请求经 schema 验证，常规回退操作作用于已打开的对应 agent；中断恢复可通过独立记录处理尚未打开的会话。浏览器按钮不调用 `session.command`，因此不产生其 `command/run` 和 `command/done` 卡片。用户手动输入命令仍走宿主标准命令路径。
 
 工作区快照面板独立显示索引占用、共享内容、会话快照数量和未保护路径。清理只调用 `gc`，保留被快照与 undo 引用的数据，不自动删除会话。
 

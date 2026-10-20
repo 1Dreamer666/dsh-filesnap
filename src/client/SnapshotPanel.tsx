@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { IconDataOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { FilesnapStatus } from '../wire.ts'
 import type { RewindHeaderActions } from './actions.ts'
 import { CleanupAction } from './CleanupAction.tsx'
+import { IconData } from './icons.ts'
 import css from './RewindAction.module.css'
 
 type Props = PropsLocale<'filesnap'> & Pick<RewindHeaderActions, 'onStatus' | 'onCleanupPreview' | 'onCleanupConfirm'>
@@ -42,7 +43,7 @@ export function SnapshotPanel({ onStatus, onCleanupPreview, onCleanupConfirm, t 
   return <>
     <Tooltip label={t('status')} side="bottom" delayMs={500}>
       <button className={css.action} type="button" aria-label={t('status')} onClick={() => { dialog.current?.showModal(); void load() }}>
-        <IconDataOutline16 size={14} />
+        <IconData size={14} />
       </button>
     </Tooltip>
     <dialog ref={dialog} className={css.dialog} aria-labelledby={title} onCancel={close}>
