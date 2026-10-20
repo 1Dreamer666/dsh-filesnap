@@ -9,10 +9,11 @@
  */
 
 import { useEffect, useId, useRef, useState } from 'react'
-import { IconRefreshOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RewindPoint, RewindPreview } from '../wire.ts'
 import type { RewindActions } from './actions.ts'
+import { IconRefresh } from './icons.ts'
 import css from './RewindAction.module.css'
 
 /** Full props: the owner's message identity, the injected verb, and the locale seat. */
@@ -128,7 +129,7 @@ export function RewindControl({ point, onPreview, onRewind, t, autoOpen = false,
       {!autoOpen && <Tooltip label={covered === undefined ? label : `${label}\n${covered}`} side="bottom" delayMs={500}>
         <button type="button" className={css.action} disabled={phase === 'loading' || phase === 'confirming'}
           aria-label={label} onClick={() => { void load(point) }}>
-          <IconRefreshOutline16 size={14} />
+          <IconRefresh size={14} />
         </button>
       </Tooltip>}
       <dialog ref={dialog} className={css.dialog} aria-labelledby={titleId} aria-describedby={descriptionId}

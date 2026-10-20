@@ -1,6 +1,8 @@
 # Quick start
 
-This guide covers **dsh-filesnap 0.4.0**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
+This guide covers **dsh-filesnap 0.4.1**: preview file changes before rewinding, inspect usage and clean up in independent panels, and migrate older conversations from Settings.
+
+Version 0.4.1 fixes desktop RPC routing, navigation and prompt refill after rewind, and icon compatibility. Failed initial points reads, subagent carry, and persistence 0.2.x cold branch reads and migration remain unresolved; see the [release notes](../../CHANGELOG.md).
 
 The screenshots below show the Chinese UI in 0.4.0. [Browse the full gallery and historical versions](../../docs/screenshots.md).
 
