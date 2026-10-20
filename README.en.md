@@ -12,13 +12,15 @@
 
 **dsh-filesnap restores conversations and tracked files together in DeepSeek Harness (DSH).** Preview the files to write, restore or delete, then confirm. Keep the original conversation in a branch, and use `/redo` to reverse a mistaken rewind. No Git required.
 
-**0.4.0 adds an independent recovery panel to preview and continue or roll back interrupted rewinds and redo.** Buttons return results over independent RPC without writing operation logs to the conversation.
+**0.4.1 fixes desktop RPC routing, branch navigation and prompt refill after rewind, and missing controls caused by renamed icons.** The interrupted-recovery panel introduced in 0.4.0 remains available. Buttons return results over independent RPC without writing operation logs to the conversation.
+
+Known limitations: retries after a failed initial points read, carrying subagents into rewind branches, and cold branch reads and migration on persistence 0.2.x remain unresolved. This release does not establish full harness 0.2.x compatibility. See the [changelog](CHANGELOG.md).
 
 ![dsh-filesnap: rewind conversations and workspace files](assets/social-preview-whale-girl.jpg)
 
 [English walkthrough (older version) · 2:29](https://youtu.be/WPEXKesR_EM) · [中文演示（旧版）· 2:24](https://www.bilibili.com/video/BV1BiYT6qEjs/)
 
-Version 0.4.0 requires FileSnap engine **0.5.1+**. No new engine release is needed for this update. An unavailable preview interface refuses the restore.
+Version 0.4.1 requires FileSnap engine **0.5.1+**. No new engine release is needed for this update. An unavailable preview interface refuses the restore.
 
 ## Install
 

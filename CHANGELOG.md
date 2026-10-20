@@ -1,9 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.4.1
 
 - 当 Connection 服务注册通道时访问不到 `webServer`（桌面端的 0.2.0-rc.2 构建），UI 通道改为直接挂载到宿主 web server 上的同一前缀路由；准入、信封校验与请求体上限不变，浏览器操作不再落到 405。
 - Mount the UI channel directly on the host web server when the Connection service cannot reach `webServer` while registering a channel (the Desktop app's 0.2.0-rc.2 build). Admission, envelope validation and the body cap are unchanged, and browser actions no longer meet the 405.
+- 兼容新旧客户端的会话导航和输入框附件字段，修复回退完成后新分支不打开、提示词不回填的问题；不覆盖已有草稿或附件（#11，修复 #9）。
+- Resolve session navigation and composer attachment fields across client generations so a completed rewind opens its branch and refills an empty composer without replacing drafts or attachments (#11, fixes #9).
+- 按运行中客户端导出的新旧名称选择图标，缺失时使用空图标兜底，避免回退、撤销回退及快照控件因 React 元素类型错误而崩溃（#12，修复 #10）。
+- Resolve icons from the running client's current or legacy exports, with an empty glyph fallback, so rewind, redo and snapshot controls do not crash on missing icon exports (#12, fixes #10).
+- 本版包含 #7、#11、#12，感谢 @1Dreamer666 的报告和修复。依赖及引擎版本要求不变。
+- Includes #7, #11 and #12. Thanks to @1Dreamer666 for the reports and fixes. Dependencies and engine requirements are unchanged.
+
+Known limitations / 已知限制：
+
+- 首次 points 读取失败后的重试问题（#13）、回退分支携带子代理（#6）以及持久化 0.2.x 的冷分支读取和迁移兼容问题（#16）尚未修复；本版不代表全面兼容 harness 0.2.x。
+- Failed initial points reads (#13), carrying subagents into rewind branches (#6), and cold branch reads and migration compatibility with persistence 0.2.x (#16) remain unresolved. This release does not establish full harness 0.2.x compatibility.
 
 ## 0.4.0
 
