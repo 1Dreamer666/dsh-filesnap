@@ -16,7 +16,7 @@ FileSnap 引擎负责有界扫描、内容寻址去重、文件还原、undo 救
 
 本版不写任何自定义会话事件。必要的中断恢复状态和 redo 引用独立存放，不属于聊天操作流水。通过 DSH 的 `turn/start`、原生消息、`parentSession` 和 `inheritedEventCount` 判断某个轮次由哪个会话创建，再与引擎的快照索引关联。进入分支时保留祖先的 point id；分支自己的新轮次使用分支 id，避免相同轮次编号串线。
 
-冷祖先通过宿主的只读 `sessionPersistence.inspect` 读取。祖先会话或快照被删除后，继承恢复点可能无法解析，因此应保留它们。重启后的捕获先查引擎索引，避免重新捕获已存在轮次而覆盖旧状态。
+冷祖先在 0.1.x 通过 `sessionPersistence.inspect` 读取，在 0.2.x 通过 `sessionPersistence.open` 打开的只读句柄读取，并始终关闭句柄。迁移枚举兼容原始 header 列表和 header 快照，原始日志路径由后端 locator 提供。祖先会话或快照被删除后，继承恢复点可能无法解析，因此应保留它们。重启后的捕获先查引擎索引，避免重新捕获已存在轮次而覆盖旧状态。
 
 `filesnap` projection 只折叠原生轮次的界面锚点。快照可用性通过独立 RPC 查询；预览、执行结果与清理结果只存在于当前调用和浏览器内存，不进入 projection 缓存。
 
@@ -26,7 +26,11 @@ FileSnap 引擎负责有界扫描、内容寻址去重、文件还原、undo 救
 2. 用户确认；令牌限定会话和恢复点，五分钟过期，单次使用。
 3. 浏览器走 DSH 自己的 `sessions.fork`，继承部署的 preset 和 workspace 组合。
 4. host 再次检查工作区与忽略规则，恢复到指定 point，先持久化命名救援点及恢复状态，再还原文件；完成状态与 child 的 redo 引用一起提交。
-5. 浏览器打开 child，并在空输入框回填完整原始提示词。部分失败留在浮层中明确展示。
+5. 被保留轮次中的子智能体按回退切点级联带入 child：在分支下克隆每个子会话并重写血缘，日志截断到切点（递归生效，切点之后出生的后代不被携带），使分支展示的正是切点时刻的家族并可继续它们；无法带入的子智能体只告警，不影响回退。
+6. 浏览器打开 child，并在空输入框回填完整原始提示词。部分失败留在浮层中明确展示。
+
+子代理克隆的 ID 采用 `filesnap-carry-v1.<原始ID的sha256>.<uuid>`。稳定哈希在连续回退和冷加载后识别同一血缘，新 UUID 保持各分支克隆独立；相同创建时间、工作目录或预设不再视为同一身份。标识通过原生持久化保存，无需自定义 header 字段或会话事件。没有 catalog 事件的运行时，在每一层都通过存储的父会话 header 查找后代。
+
 
 取消不恢复文件、不创建分支。检查不是文件系统锁，外部写入仍可能在最终检查后发生。host 拒绝时浏览器已经创建的 child 可能留在列表。headless 命令由服务自行 fork 并返回 child id。
 
@@ -48,7 +52,7 @@ FileSnap 引擎负责有界扫描、内容寻址去重、文件还原、undo 救
 
 `ctx.filesnap` 提供 `points`、`preview`、`rewind`、`redo`、`status`、`previewCleanup`、`cleanup`。结果为 `{ ok: true, value }` 或 `{ ok: false, refusal }`。直接调用 service 的集成方可以自行控制确认流程；命令和浏览器必须传预览令牌。
 
-host 与 client 分开编译，共享普通数据类型 [`src/wire.ts`](../src/wire.ts)。宿主依赖为 optional peer，避免安装第二套 Cordis/DSH。浏览器 bundle 使用宿主构建预设；本版验证基于 DSH 0.1.2-rc.1。
+host 与 client 分开编译，共享普通数据类型 [`src/wire.ts`](../src/wire.ts)。宿主依赖为 optional peer，避免安装第二套 Cordis/DSH。浏览器 bundle 使用宿主构建预设。构建和类型检查以 DSH 0.1.2-rc.1 为兼容基线；运行时测试同时覆盖 npm 已发布的 DSH 0.2.1-rc.2，包括真实 JSONL 冷祖先读取、子代理克隆和历史日志迁移。这里不包含桌面 UI 端到端测试。
 
 ## 中断恢复状态
 

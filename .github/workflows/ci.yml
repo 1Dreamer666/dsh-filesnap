@@ -42,9 +42,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: deepseek-ai/deepseek-harness
-          # Pinned to the newest harness that is actually on npm (`next`), so a
-          # commit on the harness's master cannot break a release or a CI run
-          # against an API nobody can install yet. Move it when the plugin moves.
+          # Keep the oldest supported build target; the published-runtime job
+          # below separately exercises the current persistence generation.
           ref: dsh-v0.1.2-rc.1
           path: .harness
       - uses: actions/setup-node@v4
@@ -66,3 +65,24 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build:client
+
+  published-runtime:
+    name: published harness 0.2.1-rc.2 runtime tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Install the shipped composition in isolation. Component packages'
+      # `latest` tags can lag the CLI, so pin the same published version.
+      # This does not rewrite the plugin's manifest or lockfile.
+      - name: install published runtime and existing test dependencies
+        run: |
+          harness_runtime="$RUNNER_TEMP/filesnap-harness-runtime"
+          npm install --prefix "$harness_runtime" --ignore-scripts --no-audit --no-fund \
+            @deepseek-ai/dsh@0.2.1-rc.2 \
+            @deepseek-ai/dsh-session-persistence-jsonl@0.2.1-rc.2 \
+            vitest@3.2.7 filesnap@0.5.1 zod@4.4.3
+          ln -s "$harness_runtime/node_modules" node_modules
+      - run: npm test

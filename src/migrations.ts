@@ -2,27 +2,87 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 import { createHash, randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { zstdDecompressSync } from 'node:zlib'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { migrateFile, repairArtifact, migrateStatusTitles } from './migrate-session-logs.ts'
+import { listStoredSessions } from './subagents.ts'
+import type { SubagentCarryStore } from './subagents.ts'
 import type { MigrationPlan, MigrationReport, MigrationTaskInfo, AutomaticMigrationStatus } from './wire.ts'
 
 export interface MigrationTask extends MigrationTaskInfo {
   /** Pure, idempotent format transformation. Zero changes means already compatible. */
   transform: typeof repairArtifact
+  /** Stored header versions the transformation repairs; artifacts of other generations are left alone. */
+  supports: readonly number[]
 }
 
 /** Add future migrations here; never change the identity/meaning of a released task. */
 export const MIGRATIONS: readonly MigrationTask[] = [{
   id: 'legacy-session-events-v1', from: '0.2.x / early preview', to: '0.3.0+',
   name: 'Legacy session compatibility', nameZh: '旧版会话兼容迁移',
-  transform: repairArtifact,
+  transform: repairArtifact, supports: [0],
 }, {
   id: 'branch-status-titles-v1', from: 'legacy ↩ titles', to: 'Active / Inactive',
   name: 'Branch status title markers', nameZh: '红绿灯分支标记迁移',
-  transform: migrateStatusTitles,
+  transform: migrateStatusTitles, supports: [0],
 }]
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+
+/** One stored artifact by its generation filename: `session.jsonl[.zstd]` or `session.v<N>.jsonl[.zstd]`. */
+const ARTIFACT_NAME = /^session(?:\.v(\d+))?\.jsonl(?:\.zstd)?$/u
+
+/** The stored generation one artifact filename declares; a versionless name is the original v0. */
+function nameVersion(name: string): number {
+  const match = ARTIFACT_NAME.exec(name)
+  return match?.[1] === undefined ? 0 : Number(match[1])
+}
+
+/** The format version one artifact's header frame declares, or `undefined` when it cannot be read. */
+function storedVersion(bytes: Buffer, compressed: boolean): number | undefined {
+  try {
+    // DSH writes the header as the artifact's first zstd frame; one-shot
+    // decoding reads that frame alone, leaving the appended body behind.
+    const text = compressed ? zstdDecompressSync(bytes).toString('utf8') : bytes.toString('utf8')
+    const header = JSON.parse(text.split('\n', 1)[0] ?? '') as { type?: unknown; version?: unknown }
+    return header.type === 'session' && typeof header.version === 'number' ? header.version : undefined
+  } catch { return undefined }
+}
+
+/**
+ * The artifact one located session directory actually stores in a generation
+ * this task repairs.
+ *
+ * `locate` names the current generation's path whether or not it exists —
+ * it is a diagnostics hook, not a resolver — so an absent target falls back
+ * to the directory's stored artifacts, newest generation first. A directory
+ * only holding generations the task does not repair answers `undefined`:
+ * there is nothing to do, not something to report.
+ *
+ * @param target - the located current-generation path.
+ * @param supports - stored header versions the task repairs.
+ * @returns the readable in-scope artifact, or the last read failure when none was readable.
+ */
+async function artifactFor(target: string, supports: readonly number[]): Promise<{ readonly path: string; readonly bytes: Buffer } | { readonly error: string } | undefined> {
+  let candidates = [target]
+  try { await access(target) } catch {
+    try {
+      const dir = dirname(target)
+      candidates = (await readdir(dir))
+        .filter(name => ARTIFACT_NAME.test(name))
+        .sort((left, right) => nameVersion(right) - nameVersion(left))
+        .map(name => join(dir, name))
+    } catch { candidates = [] }
+  }
+  let failure: string | undefined
+  for (const path of candidates) {
+    let bytes: Buffer
+    try { bytes = await readFile(path) } catch (error) { failure = String(error); continue }
+    if (supports.includes(storedVersion(bytes, path.endsWith('.zstd')) ?? -1)) return { path, bytes }
+  }
+  return failure === undefined ? undefined : { error: failure }
+}
 
 export class MigrationManager {
   private readonly busy = new Set<string>()
@@ -59,7 +119,7 @@ export class MigrationManager {
   }
 
   catalogue(): MigrationTaskInfo[] {
-    return this.tasks.map(({ transform: _transform, ...info }) => info)
+    return this.tasks.map(({ transform: _transform, supports: _supports, ...info }) => info)
   }
 
   async scan(taskId: string, signal?: AbortSignal, automatic = false): Promise<MigrationPlan> {
@@ -70,26 +130,37 @@ export class MigrationManager {
     if (task === undefined) throw new Error('Unknown migration task.')
     const persistence = this.ctx.get('sessionPersistence')
     if (persistence === undefined) throw new Error('Session persistence is not available.')
-    const headers = await persistence.list(signal)
+    const store = persistence as unknown as SubagentCarryStore
+    const listings = await listStoredSessions(store, signal)
     const entries: MigrationPlan['entries'][number][] = []
     const files: { id: string; path: string; hash: string }[] = []
-    for (const header of headers) {
+    for (const { header, formatStatus } of listings) {
       signal?.throwIfAborted()
-      const location = persistence.locate(header)
+      // The backend's own verdict on the stored format: an artifact it already
+      // reads in full has nothing for these legacy repairs to do, and the
+      // transform would only refuse its header.
+      if (formatStatus === 'current') continue
+      const location = store.locate?.(header)
       if (location?.kind !== 'jsonl') {
         entries.push({ session: header.id, state: 'unsupported', events: 0, detail: 'This task supports the JSONL session backend only.' })
         continue
       }
+      const artifact = await artifactFor(location.path, task.supports)
+      if (artifact === undefined) continue
+      if ('error' in artifact) {
+        entries.push({ session: header.id, state: 'error', events: 0, detail: artifact.error })
+        continue
+      }
       try {
-        const bytes = await readFile(location.path)
-        const result = task.transform(bytes, location.path.endsWith('.zstd'))
+        const bytes = artifact.bytes
+        const result = task.transform(bytes, artifact.path.endsWith('.zstd'))
         if (result.events === 0) continue
         const live = this.ctx.get('sessions')?.get(header.id) !== undefined
         entries.push({ session: header.id, state: live ? 'busy' : 'ready', events: result.events })
-        if (!live) files.push({ id: header.id, path: location.path, hash: digest(bytes) })
+        if (!live) files.push({ id: header.id, path: artifact.path, hash: digest(bytes) })
       } catch (error) { entries.push({ session: header.id, state: 'error', events: 0, detail: String(error) }) }
     }
-    const value: MigrationPlan = { token: randomUUID(), task: task.id, scanned: headers.length, entries }
+    const value: MigrationPlan = { token: randomUUID(), task: task.id, scanned: listings.length, entries }
     this.plan = { value, files, expires: Date.now() + 300_000 }
     return value
   }
